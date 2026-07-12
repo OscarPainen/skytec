@@ -10,6 +10,7 @@ import sys
 from PySide6.QtWidgets import QApplication, QDialog
 
 from core import database
+from ui import styles
 from ui.login import LoginDialog
 from ui.main_window import MainWindow
 
@@ -18,6 +19,7 @@ def main() -> int:
     database.init_db()
 
     app = QApplication(sys.argv)
+    styles.apply_palette(app)
 
     login = LoginDialog()
     if login.exec() != QDialog.Accepted or login.usuario is None:

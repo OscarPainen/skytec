@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 skytec.db
 skytec.db-*
+assets/_cache/
 .venv/
 build/
 dist/

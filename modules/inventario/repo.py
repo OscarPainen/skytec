@@ -181,6 +181,16 @@ def eliminar_producto(producto_id: int) -> None:
         conn.close()
 
 
+def mapa_nombres() -> dict[str, int]:
+    """nombre (minúsculas, sin espacios extremos) -> id. Para detectar duplicados."""
+    conn = database.get_connection()
+    try:
+        rows = conn.execute("SELECT id, nombre FROM productos")
+        return {r["nombre"].strip().lower(): r["id"] for r in rows}
+    finally:
+        conn.close()
+
+
 def umbral_stock_bajo() -> int:
     try:
         return int(database.get_config("stock_bajo_umbral", "5") or 5)

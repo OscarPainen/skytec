@@ -126,6 +126,9 @@ MIGRATIONS: list[str] = [
         valor TEXT
     );
     """,
+    # v2 — línea de venta con descripción libre: permite que un ítem sea un
+    # servicio técnico (sin producto asociado) en la misma nota de venta.
+    "ALTER TABLE venta_items ADD COLUMN descripcion TEXT;",
 ]
 
 
@@ -150,8 +153,13 @@ DEFAULT_CONFIG = {
     "pos_1_nombre": "Tech",       # pendiente confirmar con cliente
     "pos_2_nombre": "Fit",        # pendiente confirmar con cliente
     "stock_bajo_umbral": "5",
-    "impresora_conexion": "usb",  # usb | network | serial
-    "impresora_ancho": "80",      # 58 | 80 (mm)
+    "impresora_conexion": "usb",   # usb | network | serial
+    "impresora_ancho": "80",       # 58 | 80 (mm)
+    "impresora_host": "192.168.0.100",  # conexión de red
+    "impresora_puerto": "9100",
+    "impresora_serial": "COM1",         # conexión serial
+    "impresora_usb_vendor": "0x0416",   # conexión USB (VID/PID de la impresora)
+    "impresora_usb_product": "0x5011",
 }
 
 

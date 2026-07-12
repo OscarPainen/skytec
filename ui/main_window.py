@@ -86,12 +86,36 @@ class MainWindow(QMainWindow):
         # paginas: dict etiqueta -> widget, para reemplazar en fases futuras
         self.paginas: dict[str, QWidget] = {}
         for etiqueta, _icono, nota in MODULOS:
-            pagina = _Placeholder(etiqueta, nota)
+            pagina = self._construir_pagina(etiqueta, nota)
             self.paginas[etiqueta] = pagina
             self.stack.addWidget(pagina)
 
         self.botones.buttons()[0].setChecked(True)
         self.stack.setCurrentIndex(0)
+
+    def _construir_pagina(self, etiqueta: str, nota: str) -> QWidget:
+        """Página real si el módulo ya está implementado; si no, estado vacío."""
+        if etiqueta == "Servicio Técnico":
+            from modules.servicio_tecnico.page import ServicioTecnicoPage
+
+            return ServicioTecnicoPage(self.usuario)
+        if etiqueta == "Agenda":
+            from modules.agenda.page import AgendaPage
+
+            return AgendaPage(self.usuario)
+        if etiqueta == "Inventario":
+            from modules.inventario.page import InventarioPage
+
+            return InventarioPage(self.usuario)
+        if etiqueta == "Punto de Venta":
+            from modules.pos.page import PosPage
+
+            return PosPage(self.usuario)
+        if etiqueta == "Ajustes":
+            from modules.ajustes.page import AjustesPage
+
+            return AjustesPage(self.usuario)
+        return _Placeholder(etiqueta, nota)
 
     def _construir_sidebar(self, nombre_negocio: str) -> QWidget:
         side = QWidget()
