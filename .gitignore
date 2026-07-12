@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+skytec.db
+skytec.db-*
+.venv/
+build/
+dist/
+*.spec
