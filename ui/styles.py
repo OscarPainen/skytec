@@ -86,6 +86,12 @@ def build_stylesheet() -> str:
     }}
     QMainWindow, QDialog, QWidget#Content {{ background: {BG}; }}
 
+    /* Áreas de contenido: el scroll y su contenedor heredan el fondo claro.
+       Sin esto, el viewport/contenedor caen a un fondo oscuro por defecto y
+       rompen la coherencia (catálogo de Inventario, formulario de Ajustes). */
+    QScrollArea {{ background: transparent; border: none; }}
+    QScrollArea > QWidget > QWidget {{ background: transparent; }}
+
     /* Navegación lateral */
     QWidget#Sidebar {{ background: {BG_SIDEBAR}; }}
     QLabel#Brand {{

@@ -128,7 +128,9 @@ class AjustesPage(QWidget):
     # ── Helpers de layout ───────────────────────────────────────────────────
     def _seccion(self, texto: str) -> None:
         lbl = QLabel(texto)
-        lbl.setStyleSheet("font-weight:600; margin-top:6px;")
+        lbl.setStyleSheet(
+            f"color:{styles.TEXT_MUTED}; font-weight:600; font-size:13px; margin-top:6px;"
+        )
         self.form.addWidget(lbl)
 
     def _fila(self, etiqueta: str, widget: QWidget, extra: QWidget | None = None) -> QHBoxLayout:
