@@ -6,4 +6,6 @@ assets/_cache/
 .venv/
 build/
 dist/
+.env
+.DS_Store
 *.spec
