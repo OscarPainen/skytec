@@ -60,6 +60,7 @@ class LoginDialog(QDialog):
         lay.addWidget(self.error)
 
         entrar = QPushButton("Entrar")
+        styles.style_button(entrar, "primary")
         entrar.clicked.connect(self._intentar)
         lay.addWidget(entrar)
 

@@ -262,7 +262,7 @@ def build_stylesheet() -> str:
 
     /* Indicador de conexión */
     QLabel#StatusOnline {{ color: {OK}; }}
-    QLabel#StatusOffline {{ color: {TEXT_MUTED}; }}
+    QLabel#StatusOffline {{ color: {TEXT_ON_DARK}; }}
     """
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from urllib.parse import quote
 
 from PySide6.QtCore import QDate, Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -117,7 +117,7 @@ class ServicioTecnicoPage(QWidget):
             for c, texto in enumerate(celdas):
                 item = QTableWidgetItem(texto)
                 if s["vencido"]:
-                    item.setForeground(Qt.GlobalColor.red)
+                    item.setForeground(QColor(styles.DANGER))
                 self.tabla.setItem(r, c, item)
             self.tabla.item(r, 0).setData(Qt.UserRole, s["id"])
         self.tabla.setVisible(bool(filas))
