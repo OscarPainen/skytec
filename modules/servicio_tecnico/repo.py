@@ -123,7 +123,8 @@ def aceptar(solicitud_id: int, usuario_id: int | None = None) -> int:
     linea = f"Servicio técnico: {s.get('tipo_servicio') or 'Reparación'} " \
             f"{s.get('modelo_telefono') or ''}".strip()
     venta_id = pos.registrar_venta(
-        [{"descripcion": linea, "cantidad": 1, "precio_unitario": int(s["precio"])}],
+        [{"descripcion": linea, "cantidad": 1, "precio_unitario": int(s["precio"]),
+          "categoria": "reparacion"}],
         pos_origen="Servicio Técnico", usuario_id=usuario_id, tipo="servicio_tecnico",
     )
     conn = database.get_connection()

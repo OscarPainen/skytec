@@ -24,6 +24,12 @@ def registrar_venta(
 ) -> int:
     """Confirma la venta. items: [{producto_id, cantidad, precio_unitario}].
 
+    La categoría de cada ítem se congela al momento de la venta (igual que el
+    precio): para ítems con producto_id se copia productos.categoria; para
+    ítems sin producto_id (ej. servicio técnico) se usa item["categoria"] si
+    viene explícita. Así el Dashboard no depende de cómo esté categorizado el
+    producto *hoy*, sino de cómo estaba el día de esa venta.
+
     Valida stock de todos los ítems antes de tocar nada. Devuelve el N° de nota
     (id de la venta). Lanza ValueError con mensaje humano si algo no cuadra.
     """
@@ -32,13 +38,15 @@ def registrar_venta(
     conn = database.get_connection()
     try:
         total = 0
+        categorias_por_pid: dict[int, str | None] = {}
         for it in items:
             if it["cantidad"] <= 0:
                 raise ValueError("Las cantidades deben ser mayores a 0.")
             pid = it.get("producto_id")
-            if pid is not None:  # línea de producto: valida stock
+            if pid is not None:  # línea de producto: valida stock y trae su categoría
                 row = conn.execute(
-                    "SELECT stock_actual, nombre FROM productos WHERE id=?", (pid,)
+                    "SELECT stock_actual, nombre, categoria FROM productos WHERE id=?",
+                    (pid,),
                 ).fetchone()
                 if row is None:
                     raise ValueError("Uno de los productos ya no existe.")
@@ -47,6 +55,7 @@ def registrar_venta(
                         f"Stock insuficiente de «{row['nombre']}» "
                         f"(disponible: {row['stock_actual']})."
                     )
+                categorias_por_pid[pid] = row["categoria"]
             total += it["cantidad"] * it["precio_unitario"]
 
         cur = conn.execute(
@@ -58,11 +67,12 @@ def registrar_venta(
         for it in items:
             pid = it.get("producto_id")
             subtotal = it["cantidad"] * it["precio_unitario"]
+            categoria = categorias_por_pid[pid] if pid is not None else it.get("categoria")
             conn.execute(
                 "INSERT INTO venta_items (venta_id, producto_id, cantidad, "
-                "precio_unitario, subtotal, descripcion) VALUES (?,?,?,?,?,?)",
+                "precio_unitario, subtotal, descripcion, categoria) VALUES (?,?,?,?,?,?,?)",
                 (venta_id, pid, it["cantidad"], it["precio_unitario"],
-                 subtotal, it.get("descripcion")),
+                 subtotal, it.get("descripcion"), categoria),
             )
             if pid is not None:  # solo los productos mueven stock
                 conn.execute(

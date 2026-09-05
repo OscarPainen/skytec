@@ -129,6 +129,10 @@ MIGRATIONS: list[str] = [
     # v2 — línea de venta con descripción libre: permite que un ítem sea un
     # servicio técnico (sin producto asociado) en la misma nota de venta.
     "ALTER TABLE venta_items ADD COLUMN descripcion TEXT;",
+    # v3 — categoría del ítem al momento de la venta (foto, no referencia viva):
+    # igual que precio_unitario, no se recalcula si el producto cambia después.
+    # Alimenta el Dashboard de las 3 líneas de negocio sin joins a productos.
+    "ALTER TABLE venta_items ADD COLUMN categoria TEXT;",
 ]
 
 
