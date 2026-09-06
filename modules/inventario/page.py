@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.config import cargar_config
 from core.models import Producto, Usuario
 from modules.inventario import repo
 from ui import styles
@@ -386,8 +387,10 @@ class NuevoProductoDialog(QDialog):
         # Campos (mismos widgets y nombres de antes)
         self.nombre = QLineEdit()
         self.nombre.setPlaceholderText("Ej: Cargador USB-C 20W")
-        self.categoria = QLineEdit()
-        self.categoria.setPlaceholderText("Ej: Accesorios")
+        self.categoria = QComboBox()
+        self.categoria.addItem("Sin categoría", "")
+        for cat in cargar_config()["categorias"]:
+            self.categoria.addItem(cat, cat)
         self.precio = _spin_clp()
         self.costo = _spin_clp()
         self.stock = QSpinBox()
@@ -488,7 +491,7 @@ class NuevoProductoDialog(QDialog):
             precio_venta=self.precio.value(),
             costo=self.costo.value(),
             stock_inicial=self.stock.value(),
-            categoria=self.categoria.text().strip(),
+            categoria=self.categoria.currentData() or "",
             descripcion=self.descripcion.text().strip(),
             imagen_path=imagen_nombre,
             usuario_id=self.usuario.id,

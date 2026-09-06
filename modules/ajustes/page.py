@@ -5,7 +5,7 @@ validar la conexión con la impresora sin tener que hacer una venta.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from core import database, printing
+from core.config import cargar_config, guardar_config
 from core.models import Usuario
 from ui import styles
 from workers.printing import PrintWorker
@@ -75,6 +78,34 @@ class AjustesPage(QWidget):
         self.umbral.setMaximum(100000)
         self.umbral.setValue(int(database.get_config("stock_bajo_umbral", "5") or 5))
         self.form.addLayout(self._fila("Umbral de stock bajo", self.umbral))
+
+        # ── Categorías ─────────────────────────────────────────────────────
+        self._seccion("Categorías")
+        self._cfg = cargar_config()
+        ayuda_cat = QLabel(
+            "Se usan para etiquetar cada venta (reparación / tecnología / "
+            "suplemento) y alimentan el Dashboard."
+        )
+        ayuda_cat.setObjectName("Subtitle")
+        self.form.addWidget(ayuda_cat)
+        self.lista_categorias = QListWidget()
+        # Alto fijo (no el sizeHint por defecto, que ignora la cantidad de filas):
+        # alcanza para las 3 categorías actuales + margen para 1-2 más sin scroll;
+        # con más, el scroll interno de la lista sigue disponible.
+        self.lista_categorias.setFixedHeight(260)
+        self.form.addWidget(self.lista_categorias)
+        self._refrescar_categorias()
+
+        fila_cat = QHBoxLayout()
+        fila_cat.setSpacing(styles.S1)
+        self.nueva_categoria = QLineEdit()
+        self.nueva_categoria.setPlaceholderText("Nueva categoría…")
+        fila_cat.addWidget(self.nueva_categoria, 1)
+        btn_agregar_cat = QPushButton("Agregar")
+        styles.style_button(btn_agregar_cat, "secondary", "fa5s.plus")
+        btn_agregar_cat.clicked.connect(self._agregar_categoria)
+        fila_cat.addWidget(btn_agregar_cat)
+        self.form.addLayout(fila_cat)
 
         # ── Impresora ──────────────────────────────────────────────────────
         self._seccion("Impresora térmica")
@@ -165,6 +196,86 @@ class AjustesPage(QWidget):
         self._mostrar_fila(self.fila_serial, tipo == "serial")
         self._mostrar_fila(self.fila_vendor, tipo == "usb")
         self._mostrar_fila(self.fila_product, tipo == "usb")
+
+    # ── Categorías ───────────────────────────────────────────────────────────
+    def _refrescar_categorias(self) -> None:
+        self.lista_categorias.clear()
+        for cat in self._cfg["categorias"]:
+            item = QListWidgetItem()
+            # El QSS global de QListWidget::item agrega 12px de padding arriba/abajo
+            # + 2px de margen (ver ui/styles.py): con menos alto que eso más el botón
+            # (mínimo 32px), la fila se comprime y el ícono de tacho queda invisible.
+            item.setSizeHint(QSize(0, 60))
+            self.lista_categorias.addItem(item)
+            self.lista_categorias.setItemWidget(item, self._fila_categoria(cat))
+
+    def _fila_categoria(self, categoria: str) -> QWidget:
+        w = QWidget()
+        h = QHBoxLayout(w)
+        h.setContentsMargins(4, 0, 4, 0)
+        h.addWidget(QLabel(categoria))
+        h.addStretch()
+        quitar = QPushButton()
+        styles.style_button(quitar, "icon_danger", "fa5s.times")
+        quitar.setToolTip("Eliminar categoría")
+        quitar.clicked.connect(lambda _=False, c=categoria: self._quitar_categoria(c))
+        h.addWidget(quitar)
+        return w
+
+    def _agregar_categoria(self) -> None:
+        nueva = self.nueva_categoria.text().strip()
+        if not nueva:
+            return
+        if nueva.lower() in [c.lower() for c in self._cfg["categorias"]]:
+            QMessageBox.information(self, "Categorías", "Esa categoría ya existe.")
+            return
+        self._cfg["categorias"].append(nueva)
+        guardar_config(self._cfg)
+        self.nueva_categoria.clear()
+        self._refrescar_categorias()
+
+    def _quitar_categoria(self, categoria: str) -> None:
+        if self._categoria_tiene_ventas(categoria):
+            QMessageBox.warning(
+                self, "No se puede eliminar",
+                f"«{categoria}» tiene ventas registradas. No se puede eliminar "
+                "una categoría con historial.",
+            )
+            return
+        if self._categoria_tiene_productos(categoria):
+            QMessageBox.warning(
+                self, "No se puede eliminar",
+                f"No se puede eliminar «{categoria}»: todavía hay productos "
+                "con esta categoría.",
+            )
+            return
+        self._cfg["categorias"] = [c for c in self._cfg["categorias"] if c != categoria]
+        guardar_config(self._cfg)
+        self._refrescar_categorias()
+
+    @staticmethod
+    def _categoria_tiene_ventas(categoria: str) -> bool:
+        # Solo lectura: consulta la foto de categoría guardada en cada venta.
+        conn = database.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM venta_items WHERE categoria=?", (categoria,)
+            ).fetchone()
+            return row[0] > 0
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _categoria_tiene_productos(categoria: str) -> bool:
+        # Solo lectura: productos de inventario (vendidos o no) en esa categoría.
+        conn = database.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM productos WHERE categoria=?", (categoria,)
+            ).fetchone()
+            return row[0] > 0
+        finally:
+            conn.close()
 
     # ── Acciones ─────────────────────────────────────────────────────────────
     def _elegir_logo(self) -> None:
