@@ -88,13 +88,6 @@ class AjustesPage(QWidget):
         )
         ayuda_cat.setObjectName("Subtitle")
         self.form.addWidget(ayuda_cat)
-        self.lista_categorias = QListWidget()
-        # Alto fijo (no el sizeHint por defecto, que ignora la cantidad de filas):
-        # alcanza para las 3 categorías actuales + margen para 1-2 más sin scroll;
-        # con más, el scroll interno de la lista sigue disponible.
-        self.lista_categorias.setFixedHeight(260)
-        self.form.addWidget(self.lista_categorias)
-        self._refrescar_categorias()
 
         fila_cat = QHBoxLayout()
         fila_cat.setSpacing(styles.S1)
@@ -106,6 +99,14 @@ class AjustesPage(QWidget):
         btn_agregar_cat.clicked.connect(self._agregar_categoria)
         fila_cat.addWidget(btn_agregar_cat)
         self.form.addLayout(fila_cat)
+
+        self.lista_categorias = QListWidget()
+        # Alto fijo (no el sizeHint por defecto, que ignora la cantidad de filas):
+        # alcanza para las 3 categorías actuales + margen para 1-2 más sin scroll;
+        # con más, el scroll interno de la lista sigue disponible.
+        self.lista_categorias.setFixedHeight(260)
+        self.form.addWidget(self.lista_categorias)
+        self._refrescar_categorias()
 
         # ── Impresora ──────────────────────────────────────────────────────
         self._seccion("Impresora térmica")
@@ -203,9 +204,10 @@ class AjustesPage(QWidget):
         for cat in self._cfg["categorias"]:
             item = QListWidgetItem()
             # El QSS global de QListWidget::item agrega 12px de padding arriba/abajo
-            # + 2px de margen (ver ui/styles.py): con menos alto que eso más el botón
-            # (mínimo 32px), la fila se comprime y el ícono de tacho queda invisible.
-            item.setSizeHint(QSize(0, 60))
+            # + 2px de margen (ver ui/styles.py): con menos alto que eso más el tamaño
+            # real del botón de tacho (44px, no los 32px "mínimos" declarados en QSS),
+            # la fila lo recorta — se ve como un recuadro de hover cortado por abajo.
+            item.setSizeHint(QSize(0, 76))
             self.lista_categorias.addItem(item)
             self.lista_categorias.setItemWidget(item, self._fila_categoria(cat))
 
@@ -213,13 +215,13 @@ class AjustesPage(QWidget):
         w = QWidget()
         h = QHBoxLayout(w)
         h.setContentsMargins(4, 0, 4, 0)
-        h.addWidget(QLabel(categoria))
+        h.addWidget(QLabel(categoria), 0, Qt.AlignVCenter)
         h.addStretch()
         quitar = QPushButton()
         styles.style_button(quitar, "icon_danger", "fa5s.times")
         quitar.setToolTip("Eliminar categoría")
         quitar.clicked.connect(lambda _=False, c=categoria: self._quitar_categoria(c))
-        h.addWidget(quitar)
+        h.addWidget(quitar, 0, Qt.AlignVCenter)
         return w
 
     def _agregar_categoria(self) -> None:

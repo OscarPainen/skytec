@@ -127,7 +127,11 @@ class PosPage(QWidget):
         for p in productos:
             item = QListWidgetItem()
             item.setData(Qt.UserRole, p.id)
-            item.setSizeHint(QSize(0, 48))
+            # El QSS global de QListWidget::item agrega 12px de padding arriba/abajo
+            # + 2px de margen (ver ui/styles.py): con menos alto que eso más el
+            # tamaño real del botón (+), la fila se comprime y el botón queda
+            # casi invisible/recortado.
+            item.setSizeHint(QSize(0, 76))
             self.lista.addItem(item)
             self.lista.setItemWidget(item, self._fila_producto(p))
 
@@ -147,8 +151,8 @@ class PosPage(QWidget):
         agregar.clicked.connect(lambda _=False, pid=p.id: self._agregar(pid))
         h.addWidget(nombre)
         h.addStretch()
-        h.addWidget(meta)
-        h.addWidget(agregar)
+        h.addWidget(meta, 0, Qt.AlignVCenter)
+        h.addWidget(agregar, 0, Qt.AlignVCenter)
         return w
 
     def _al_activar_item(self, item: QListWidgetItem) -> None:
