@@ -83,6 +83,14 @@ class PosPage(QWidget):
         self._cargar_productos()
         self._rebuild_carrito()
 
+    def showEvent(self, event) -> None:
+        """PosPage se crea una sola vez y queda oculta al cambiar de pestaña
+        (QStackedWidget), así que sin esto la lista quedaba con el stock del
+        momento en que se abrió la app. showEvent se dispara cada vez que la
+        pestaña vuelve a mostrarse, así que aquí refrescamos contra la BD."""
+        super().showEvent(event)
+        self._cargar_productos()
+
     # ── Panel izquierdo: productos ──────────────────────────────────────────
     def _panel_productos(self) -> QWidget:
         panel = QWidget()
@@ -95,8 +103,9 @@ class PosPage(QWidget):
         lay.addWidget(self.buscar)
         self.lista = QListWidget()
         self.lista.viewport().setCursor(Qt.PointingHandCursor)
+        # itemActivated ya cubre doble clic Y Enter/Return; conectar también
+        # itemDoubleClicked duplicaba el disparo (2 unidades por doble clic).
         self.lista.itemActivated.connect(self._al_activar_item)
-        self.lista.itemDoubleClicked.connect(self._al_activar_item)
         lay.addWidget(self.lista, 1)
         ayuda = QLabel("Doble clic o Enter para agregar al carrito")
         ayuda.setObjectName("Subtitle")
@@ -123,7 +132,7 @@ class PosPage(QWidget):
             self.lista.setItemWidget(item, self._fila_producto(p))
 
     def _fila_producto(self, p) -> QWidget:
-        """Fila: nombre (peso 500) a la izquierda, precio y stock a la derecha."""
+        """Fila: nombre (peso 500) a la izquierda, precio/stock y botón (+) a la derecha."""
         w = QWidget()
         h = QHBoxLayout(w)
         h.setContentsMargins(4, 0, 4, 0)
@@ -132,9 +141,14 @@ class PosPage(QWidget):
         nombre.setStyleSheet("font-weight:500; background:transparent;")
         meta = QLabel(f"{clp(p.precio_venta)}   ·   stock {p.stock_actual}")
         meta.setStyleSheet(f"color:{styles.TEXT_MUTED}; background:transparent;")
+        agregar = QPushButton()
+        styles.style_button(agregar, "icon", "fa5s.plus")
+        agregar.setToolTip("Agregar al carrito")
+        agregar.clicked.connect(lambda _=False, pid=p.id: self._agregar(pid))
         h.addWidget(nombre)
         h.addStretch()
         h.addWidget(meta)
+        h.addWidget(agregar)
         return w
 
     def _al_activar_item(self, item: QListWidgetItem) -> None:

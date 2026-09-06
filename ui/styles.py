@@ -165,13 +165,13 @@ def build_stylesheet() -> str:
         min-height: 24px; padding: 6px 12px;
         selection-background-color: {ACCENT_SOFT}; selection-color: {TEXT};
     }}
-    QTextEdit {{
+    QTextEdit, QPlainTextEdit {{
         background: {BG}; color: {TEXT}; border: 1px solid {BORDER};
         border-radius: {RADIUS}px; padding: 8px 12px;
         selection-background-color: {ACCENT_SOFT};
     }}
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
-    QDateEdit:focus, QTextEdit:focus {{ border: 1px solid {ACCENT}; }}
+    QDateEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{ border: 1px solid {ACCENT}; }}
     QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {{
         background: {SURFACE}; color: {TEXT_MUTED};
     }}

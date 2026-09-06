@@ -290,7 +290,6 @@ class SolicitudDialog(QDialog):
     def _guardar(self) -> None:
         self._datos_servicio()
         QMessageBox.information(self, "Guardado", "Datos del servicio guardados.")
-        self.accept()
 
     def _whatsapp(self) -> None:
         self._datos_servicio()  # guarda antes para que el mensaje esté completo
