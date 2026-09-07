@@ -10,3 +10,4 @@ dist/
 .env
 .DS_Store
 *.spec
+ESTADO_PROYECTO.txt

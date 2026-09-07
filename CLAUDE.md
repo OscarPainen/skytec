@@ -24,7 +24,7 @@ celulares, vende tecnología y suplementos. Cliente: HOB Consulting (Oscar).
 1. Quick wins (casi listo — falta category tags y Ajustes)
 2. Dashboard de las 3 líneas de negocio (LA prioridad para Oscar)
 3. Nota de venta + garantía, lógica de agenda
-4. Actualización remota + impresora térmica (NO comprometer antes de vacaciones, 9 sept)
+4. Actualización remota + impresora térmica
 
 ## Reglas de trabajo
 - Yo soy junior en Python — explica el porqué de los cambios, no solo el qué
