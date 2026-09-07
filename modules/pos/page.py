@@ -42,7 +42,7 @@ def _centrar(widget: QWidget) -> QWidget:
     lay = QHBoxLayout(cont)
     lay.setContentsMargins(0, 0, 0, 0)
     lay.addStretch()
-    lay.addWidget(widget)
+    lay.addWidget(widget, 0, Qt.AlignVCenter)
     lay.addStretch()
     return cont
 
@@ -187,7 +187,10 @@ class PosPage(QWidget):
         self.tabla = QTableWidget(0, 5)
         self.tabla.setHorizontalHeaderLabels(["PRODUCTO", "CANT.", "PRECIO", "SUBTOTAL", ""])
         self.tabla.verticalHeader().setVisible(False)
-        self.tabla.verticalHeader().setDefaultSectionSize(52)  # filas cómodas
+        # 64 y no 52: el botón "x" de eliminar mide 44px de alto real (no los "32px
+        # mínimos" del QSS) más el padding de QTableWidget::item (ver ui/styles.py);
+        # con 52 quedaba recortado por arriba/abajo.
+        self.tabla.verticalHeader().setDefaultSectionSize(64)
         self.tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabla.setSelectionMode(QTableWidget.NoSelection)
         self.tabla.setShowGrid(False)
@@ -198,8 +201,13 @@ class PosPage(QWidget):
         self.tabla.horizontalHeader().setFont(hf)
         h = self.tabla.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.Stretch)
-        for c in (1, 2, 3, 4):
+        for c in (1, 2, 3):
             h.setSectionResizeMode(c, QHeaderView.ResizeToContents)
+        # Columna del botón "x": ResizeToContents no considera el ancho real de un
+        # setCellWidget (solo el de QTableWidgetItem), así que quedaba angosta
+        # (~28px) y el botón (44px) se recortaba a los costados. Ancho fijo en su lugar.
+        h.setSectionResizeMode(4, QHeaderView.Fixed)
+        self.tabla.setColumnWidth(4, 64)
         lay.addWidget(self.tabla, 1)
 
         # Estado vacío diseñado: ícono sutil + texto centrado
