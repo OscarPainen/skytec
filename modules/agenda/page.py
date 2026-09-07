@@ -66,6 +66,14 @@ class AgendaPage(QWidget):
 
         self.recargar()
 
+    def showEvent(self, event) -> None:
+        """AgendaPage se crea una sola vez y queda oculta al cambiar de pestaña
+        (QStackedWidget), así que sin esto la tabla quedaba desactualizada si
+        una solicitud se aceptaba desde Servicio Técnico. showEvent se dispara
+        cada vez que la pestaña vuelve a mostrarse, así que refrescamos aquí."""
+        super().showEvent(event)
+        self.recargar()
+
     def _fuente(self) -> list[dict]:
         return {
             "activos": repo.agenda_activos,
