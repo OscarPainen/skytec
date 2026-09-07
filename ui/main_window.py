@@ -98,7 +98,10 @@ class MainWindow(QMainWindow):
         if etiqueta == "Servicio Técnico":
             from modules.servicio_tecnico.page import ServicioTecnicoPage
 
-            return ServicioTecnicoPage(self.usuario)
+            pagina = ServicioTecnicoPage(self.usuario)
+            # Al aceptar una solicitud, saltar solo a la pestaña Agenda.
+            pagina.solicitud_aceptada.connect(self._ir_a_agenda)
+            return pagina
         if etiqueta == "Agenda":
             from modules.agenda.page import AgendaPage
 
@@ -149,6 +152,14 @@ class MainWindow(QMainWindow):
         self.status.setContentsMargins(styles.S2, 0, styles.S2, 0)
         lay.addWidget(self.status)
         return side
+
+    def _ir_a_agenda(self) -> None:
+        """Cambia a la pestaña Agenda (se llama al aceptar una solicitud en
+        Servicio Técnico). Busca el índice por nombre en MODULOS en vez de
+        dejarlo fijo, para que no se rompa si el orden de pestañas cambia."""
+        idx = [m[0] for m in MODULOS].index("Agenda")
+        self.botones.button(idx).setChecked(True)
+        self.stack.setCurrentIndex(idx)
 
     def set_estado_conexion(self, online: bool) -> None:
         """La sincronización (Fase 6) llamará esto para el indicador discreto."""

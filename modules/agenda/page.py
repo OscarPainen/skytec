@@ -111,5 +111,7 @@ class AgendaPage(QWidget):
 
     def _abrir_fila(self, row: int, _col: int) -> None:
         sid = self.tabla.item(row, 0).data(Qt.UserRole)
-        SolicitudDialog(sid, self.usuario, self).exec()
+        # mostrar_nota=True: desde Agenda sí se puede ver/generar la nota de
+        # venta (ya no se genera sola al aceptar en Servicio Técnico).
+        SolicitudDialog(sid, self.usuario, self, mostrar_nota=True).exec()
         self.recargar()

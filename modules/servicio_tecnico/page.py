@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from PySide6.QtCore import QDate, Qt, QUrl
+from PySide6.QtCore import QDate, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -55,6 +55,9 @@ def _spin_clp() -> QSpinBox:
 
 
 class ServicioTecnicoPage(QWidget):
+    # Se emite cuando se acepta una solicitud, para que MainWindow salte a Agenda.
+    solicitud_aceptada = Signal()
+
     def __init__(self, usuario: Usuario) -> None:
         super().__init__()
         self.usuario = usuario
@@ -125,7 +128,9 @@ class ServicioTecnicoPage(QWidget):
 
     def _abrir_fila(self, row: int, _col: int) -> None:
         sid = self.tabla.item(row, 0).data(Qt.UserRole)
-        SolicitudDialog(sid, self.usuario, self).exec()
+        dialogo = SolicitudDialog(sid, self.usuario, self)
+        dialogo.aceptada.connect(self.solicitud_aceptada)
+        dialogo.exec()
         self.recargar()
 
     def _nueva(self) -> None:
@@ -194,10 +199,21 @@ class NuevaSolicitudDialog(QDialog):
 class SolicitudDialog(QDialog):
     """Detalle: datos del servicio, WhatsApp, aceptar y transiciones de estado."""
 
-    def __init__(self, solicitud_id: int, usuario: Usuario, parent=None) -> None:
+    # Se emite justo antes de cerrarse por "Cliente aceptó" (no por Guardar/Eliminar/
+    # transiciones de estado). ServicioTecnicoPage la escucha para avisarle a
+    # MainWindow que salte a la pestaña Agenda.
+    aceptada = Signal()
+
+    def __init__(
+        self, solicitud_id: int, usuario: Usuario, parent=None, mostrar_nota: bool = False,
+    ) -> None:
         super().__init__(parent)
         self.solicitud_id = solicitud_id
         self.usuario = usuario
+        # mostrar_nota=True solo cuando se abre desde Agenda: ahí sí tiene sentido
+        # ver/generar la nota de venta. Desde Servicio Técnico ya no se muestra:
+        # esa pestaña se queda solo con las solicitudes.
+        self.mostrar_nota = mostrar_nota
         self.s = repo.obtener(solicitud_id)
         self.setWindowTitle(f"Solicitud — {self.s.get('cliente_nombre') or ''}")
         self.setMinimumWidth(480)
@@ -253,6 +269,11 @@ class SolicitudDialog(QDialog):
         styles.style_button(wa, "secondary", "fa5b.whatsapp")
         wa.clicked.connect(self._whatsapp)
         f1.addWidget(wa)
+        if self.mostrar_nota and self.s.get("venta_id"):
+            nota = QPushButton("Ver nota de venta")
+            styles.style_button(nota, "secondary", "fa5s.receipt")
+            nota.clicked.connect(self._ver_nota)
+            f1.addWidget(nota)
         f1.addStretch()
         self.btn_aceptar = QPushButton("Cliente aceptó")
         styles.style_button(self.btn_aceptar, "primary", "fa5s.check-circle")
@@ -305,12 +326,20 @@ class SolicitudDialog(QDialog):
     def _aceptar(self) -> None:
         self._datos_servicio()
         try:
-            venta_id = repo.aceptar(self.solicitud_id, self.usuario.id)
+            repo.aceptar(self.solicitud_id, self.usuario.id)
         except ValueError as e:
             QMessageBox.warning(self, "No se pudo aceptar", str(e))
             return
-        NotaVentaDialog(venta_id, self).exec()
+        self.aceptada.emit()
+        QMessageBox.information(
+            self, "Solicitud aceptada",
+            "Quedó agendada. La nota de venta ahora se genera desde la pestaña"
+            " Agenda, no aquí.",
+        )
         self.accept()
+
+    def _ver_nota(self) -> None:
+        NotaVentaDialog(self.s["venta_id"], self).exec()
 
     def _estado(self, estado: str) -> None:
         repo.cambiar_estado(self.solicitud_id, estado)
