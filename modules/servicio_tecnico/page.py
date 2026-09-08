@@ -333,8 +333,8 @@ class SolicitudDialog(QDialog):
         self.aceptada.emit()
         QMessageBox.information(
             self, "Solicitud aceptada",
-            "Quedó agendada. La nota de venta ahora se genera desde la pestaña"
-            " Agenda, no aquí.",
+            "La solicitud quedó agendada. Genera la nota de venta desde la"
+            " pestaña Agenda.",
         )
         self.accept()
 
