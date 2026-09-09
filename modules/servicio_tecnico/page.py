@@ -73,6 +73,10 @@ class ServicioTecnicoPage(QWidget):
         cab.addWidget(titulo)
         cab.addStretch()
         self.filtro = QComboBox()
+        # Por defecto la bandeja muestra solo los "pedidos" por atender: en cuanto
+        # se acepta una solicitud pasa a Agenda y sale de aquí, así Servicio Técnico
+        # queda limpio. "Todas" y los estados sueltos siguen disponibles para buscar.
+        self.filtro.addItem("Pedidos (por atender)", "__pedidos__")
         self.filtro.addItem("Todas las solicitudes", None)
         for clave, texto in ESTADOS.items():
             self.filtro.addItem(texto, clave)
@@ -104,7 +108,8 @@ class ServicioTecnicoPage(QWidget):
         self.recargar()
 
     def recargar(self) -> None:
-        filas = repo.listar(estado=self.filtro.currentData())
+        sel = self.filtro.currentData()
+        filas = repo.pedidos() if sel == "__pedidos__" else repo.listar(estado=sel)
         self.tabla.setRowCount(0)
         for s in filas:
             r = self.tabla.rowCount()

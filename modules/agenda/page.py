@@ -1,8 +1,14 @@
-"""Módulo Agenda — calendario de servicios y gestión de excepciones.
+"""Módulo Agenda — el "PoS del servicio": historial de servicios agendados.
 
-Tres vistas: servicios activos y al día, vencidos (pasó la fecha comprometida) y
-equipos no retirados. Los vencidos se resaltan. Al abrir una fila se reutiliza el
-detalle de Servicio Técnico (donde se marca completado tardío o se elimina).
+Tres vistas:
+- "Agendados": los últimos servicios que pasaron por "Cliente aceptó", en cualquier
+  estado (aceptada / en reparación / completada / no retirada). Cambiar el estado NO
+  saca la fila de la lista; el servicio queda guardado hasta que se elimine a mano.
+- "Vencidos": pasó la fecha comprometida y aún no se entregó (se resaltan en rojo).
+- "No retirados": equipos marcados como no retirados.
+
+Al abrir una fila se reutiliza el detalle de Servicio Técnico (donde se cambia de
+estado, se ve la nota de venta o se elimina para corregir un error).
 """
 from __future__ import annotations
 
@@ -40,7 +46,7 @@ class AgendaPage(QWidget):
         cab.addWidget(titulo)
         cab.addStretch()
         self.filtro = QComboBox()
-        self.filtro.addItem("Activos / al día", "activos")
+        self.filtro.addItem("Agendados", "agendados")
         self.filtro.addItem("Vencidos", "vencidos")
         self.filtro.addItem("No retirados", "no_retirados")
         self.filtro.currentIndexChanged.connect(self.recargar)
@@ -76,7 +82,7 @@ class AgendaPage(QWidget):
 
     def _fuente(self) -> list[dict]:
         return {
-            "activos": repo.agenda_activos,
+            "agendados": lambda: repo.agenda_agendados(15),
             "vencidos": repo.vencidos,
             "no_retirados": repo.no_retiradas,
         }[self.filtro.currentData()]()
@@ -104,7 +110,7 @@ class AgendaPage(QWidget):
         self.tabla.setVisible(bool(filas))
         self.vacio.setVisible(not filas)
         self.vacio.setText({
-            "activos": "No hay servicios agendados.",
+            "agendados": "No hay servicios agendados todavía.",
             "vencidos": "No hay trabajos vencidos. 👌",
             "no_retirados": "No hay equipos sin retirar.",
         }[self.filtro.currentData()])

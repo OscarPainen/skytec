@@ -15,6 +15,15 @@ from modules.pos import repo as pos
 # Estados que siguen "vivos" (aún gestionables en agenda).
 ACTIVOS = ("pendiente", "revisada", "aceptada", "en_reparacion")
 
+# Un "pedido" es una solicitud que todavía vive en la bandeja de Servicio Técnico
+# (aún no se acepta/agenda). Al aceptar, pasa a Agenda y sale de esta bandeja.
+PEDIDOS = ("pendiente", "revisada")
+
+# Un servicio "agendado" ya pasó por "Cliente aceptó" y vive en Agenda. Recorre
+# estos estados SIN salirse de la lista de Agenda: cambiar de estado NO lo borra,
+# queda visible hasta que se elimine a mano. Agenda es el "PoS del servicio".
+AGENDADOS = ("aceptada", "en_reparacion", "completada", "no_retirada")
+
 
 def crear_solicitud_manual(
     modelo: str, nombre: str, email: str, telefono: str,
@@ -166,9 +175,22 @@ def eliminar(solicitud_id: int) -> None:
 
 
 # ── Vistas de agenda / excepciones ──────────────────────────────────────────
-def agenda_activos() -> list[dict]:
-    """Servicios vivos y al día (agendados o pendientes), no vencidos."""
-    return [s for s in listar() if s["estado"] in ACTIVOS and not s["vencido"]]
+def pedidos() -> list[dict]:
+    """Bandeja de Servicio Técnico: solo las solicitudes que todavía son 'pedidos'
+    (pendiente/revisada). En cuanto se aceptan, pasan a Agenda y salen de aquí, así
+    Servicio Técnico queda limpio con las solicitudes por atender."""
+    return [s for s in listar() if s["estado"] in PEDIDOS]
+
+
+def agenda_agendados(limite: int = 15) -> list[dict]:
+    """Vista principal de Agenda: los últimos N servicios agendados, en CUALQUIER
+    estado del ciclo (aceptada, en reparación, completada o no retirada).
+
+    Clave: cambiar el estado de un servicio NO lo saca de esta lista (antes, marcar
+    'Completada' o 'No retirada' lo hacía desaparecer y parecía que se eliminaba).
+    El servicio queda guardado y visible hasta que se elimine a mano. `listar()` ya
+    ordena por más reciente, así que basta con recortar a los últimos `limite`."""
+    return [s for s in listar() if s["estado"] in AGENDADOS][:limite]
 
 
 def vencidos() -> list[dict]:
@@ -232,9 +254,16 @@ if __name__ == "__main__":
     except ValueError:
         pass
 
-    # vencido: entrega 2020 < hoy y no completada
-    assert len(vencidos()) == 1 and len(agenda_activos()) == 0
+    # vencido: entrega 2020 < hoy y estado 'aceptada' (no completada/no_retirada)
+    assert len(vencidos()) == 1
+    # ya está agendada: aparece en Agenda y ya NO en la bandeja de pedidos
+    assert len(agenda_agendados()) == 1 and len(pedidos()) == 0
+    # --- el bug que reportó el cliente: marcar un estado NO debe sacar la fila de Agenda ---
     cambiar_estado(sid, "completada")
     assert len(vencidos()) == 0
+    assert len(agenda_agendados()) == 1, "completada NO debe desaparecer de Agenda"
+    cambiar_estado(sid, "no_retirada")
+    assert len(agenda_agendados()) == 1, "no_retirada tampoco debe desaparecer de Agenda"
+    assert len(no_retiradas()) == 1
     assert "iPhone 13" in whatsapp_texto(sid)
     print("OK servicio_tecnico/repo.py")
