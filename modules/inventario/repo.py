@@ -64,6 +64,7 @@ def crear_producto(
     costo: int,
     stock_inicial: int = 0,
     categoria: str = "",
+    linea_negocio: str = "tecnologia",
     descripcion: str = "",
     imagen_path: str = "",
     usuario_id: int | None = None,
@@ -72,8 +73,8 @@ def crear_producto(
     try:
         cur = conn.execute(
             "INSERT INTO productos (nombre, descripcion, imagen_path, precio_venta, "
-            "costo, stock_actual, categoria) VALUES (?,?,?,?,?,?,?)",
-            (nombre, descripcion, imagen_path, precio_venta, costo, 0, categoria),
+            "costo, stock_actual, categoria, linea_negocio) VALUES (?,?,?,?,?,?,?,?)",
+            (nombre, descripcion, imagen_path, precio_venta, costo, 0, categoria, linea_negocio),
         )
         pid = cur.lastrowid
         conn.commit()

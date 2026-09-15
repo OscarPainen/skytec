@@ -44,6 +44,7 @@ class Producto(_Base):
     costo: int
     stock_actual: int
     categoria: str | None
+    linea_negocio: str
     disponible: int
     creado_en: str
 
@@ -73,6 +74,7 @@ class Venta(_Base):
     usuario_id: int | None
     pos_origen: str | None
     boleta_sii: str | None
+    origen: str  # pos | web | agenda
 
 
 @dataclass
@@ -83,6 +85,9 @@ class VentaItem(_Base):
     cantidad: int
     precio_unitario: int
     subtotal: int
+    categoria: str | None
+    linea_negocio: str
+    costo_unitario: int
 
 
 @dataclass

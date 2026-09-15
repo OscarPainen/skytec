@@ -13,12 +13,13 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils.exceptions import InvalidFileException
 
+from modules.ajustes.repo import LINEAS_NEGOCIO
 from modules.inventario import repo
 
 # Encabezados exactos que el sistema espera (sin 'imagen': se agrega manual).
-HEADERS = ["nombre", "descripcion", "categoria", "precio_venta", "costo",
-           "stock_inicial", "disponible"]
-OBLIGATORIAS = {"nombre", "precio_venta", "costo", "stock_inicial"}
+HEADERS = ["nombre", "descripcion", "categoria", "linea_negocio", "precio_venta",
+           "costo", "stock_inicial", "disponible"]
+OBLIGATORIAS = {"nombre", "linea_negocio", "precio_venta", "costo", "stock_inicial"}
 
 _VERDADERO = {"si", "sí", "true", "verdadero", "1", "x"}
 _FALSO = {"no", "false", "falso", "0"}
@@ -42,6 +43,7 @@ class FilaImport:
     nombre: str
     descripcion: str
     categoria: str
+    linea_negocio: str
     precio_venta: int
     costo: int
     stock_inicial: int
@@ -69,13 +71,15 @@ def generar_plantilla(ruta: Path) -> None:
         celda.alignment = Alignment(horizontal="center")
 
     ejemplos = [
-        ["Cargador USB-C 20W", "Carga rápida original", "Accesorios", 12990, 6000, 15, "si"],
-        ["Lámina templada iPhone 13", "Vidrio 9H", "Protección", 4990, 1500, 40, "si"],
+        ["Cargador USB-C 20W", "Carga rápida original", "Accesorios", "tecnologia",
+         12990, 6000, 15, "si"],
+        ["Lámina templada iPhone 13", "Vidrio 9H", "Protección", "tecnologia",
+         4990, 1500, 40, "si"],
     ]
     for fila in ejemplos:
         ws.append(fila)
 
-    anchos = [26, 34, 16, 14, 10, 14, 12]
+    anchos = [26, 34, 16, 14, 14, 10, 14, 12]
     for col, ancho in enumerate(anchos, start=1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = ancho
 
@@ -85,13 +89,14 @@ def generar_plantilla(ruta: Path) -> None:
         "Instrucciones para la carga masiva de inventario — Skytec",
         "",
         "1. No cambies los nombres ni el orden de las columnas de la hoja 'Productos'.",
-        "2. Columnas obligatorias: nombre, precio_venta, costo, stock_inicial.",
-        "3. 'categoria' y 'descripcion' pueden quedar vacías.",
-        "4. Números sin puntos de miles (ej: 12990, no 12.990). Usa punto para decimales.",
-        "5. 'disponible': escribe 'si' o 'no' (por defecto 'si').",
-        "6. La imagen del producto NO se carga aquí: se agrega después, manualmente,",
+        "2. Columnas obligatorias: nombre, linea_negocio, precio_venta, costo, stock_inicial.",
+        "3. 'linea_negocio' debe ser exactamente: reparacion, tecnologia o suplemento.",
+        "4. 'categoria' y 'descripcion' pueden quedar vacías.",
+        "5. Números sin puntos de miles (ej: 12990, no 12.990). Usa punto para decimales.",
+        "6. 'disponible': escribe 'si' o 'no' (por defecto 'si').",
+        "7. La imagen del producto NO se carga aquí: se agrega después, manualmente,",
         "   desde el catálogo de cada producto.",
-        "7. Borra las dos filas de ejemplo antes de cargar tus productos.",
+        "8. Borra las dos filas de ejemplo antes de cargar tus productos.",
     ]
     for i, texto in enumerate(notas, start=1):
         celda = inst.cell(row=i, column=1, value=texto)
@@ -157,6 +162,14 @@ def leer_archivo(ruta: str | Path) -> list[FilaImport]:
         if not nombre:
             errores.append("falta el nombre")
 
+        linea_raw = val("linea_negocio")
+        linea_negocio = str(linea_raw).strip().lower() if linea_raw is not None else ""
+        if linea_negocio not in LINEAS_NEGOCIO:
+            errores.append(
+                f"linea_negocio debe ser una de: {', '.join(LINEAS_NEGOCIO)} "
+                f"(vino: «{linea_negocio or 'vacío'}»)"
+            )
+
         precio = costo = stock = 0
         try:
             precio = round(_a_numero(val("precio_venta")))
@@ -191,6 +204,7 @@ def leer_archivo(ruta: str | Path) -> list[FilaImport]:
             numero_fila=i, nombre=nombre,
             descripcion=str(val("descripcion") or "").strip(),
             categoria=str(val("categoria") or "").strip(),
+            linea_negocio=linea_negocio,
             precio_venta=precio, costo=costo, stock_inicial=stock,
             disponible=disponible,
             error="; ".join(errores) if errores else None,
@@ -223,6 +237,7 @@ def importar(filas: list[FilaImport], politica: str, usuario_id: int | None = No
         pid = repo.crear_producto(
             nombre=f.nombre, precio_venta=f.precio_venta, costo=f.costo,
             stock_inicial=f.stock_inicial, categoria=f.categoria,
+            linea_negocio=f.linea_negocio,
             descripcion=f.descripcion, imagen_path="", usuario_id=usuario_id,
         )
         if not f.disponible:
@@ -263,11 +278,12 @@ if __name__ == "__main__":
     except ExcelError:
         pass
 
-    # fila con errores de datos
+    # fila con errores de datos (incluye linea_negocio invalida)
     wb = openpyxl.Workbook(); ws = wb.active
     ws.append(HEADERS)
-    ws.append(["", "d", "c", "abc", -5, 2.5, "si"])  # sin nombre, precio no num, costo neg, stock no entero
+    ws.append(["", "d", "c", "no_existe", "abc", -5, 2.5, "si"])
+    # sin nombre, linea invalida, precio no num, costo neg, stock no entero
     bad = tmp / "bad.xlsx"; wb.save(bad)
     f = leer_archivo(bad)[0]
-    assert not f.valida and "nombre" in f.error, f.error
+    assert not f.valida and "nombre" in f.error and "linea_negocio" in f.error, f.error
     print("OK inventario/excel.py")

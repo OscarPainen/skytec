@@ -8,18 +8,37 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import sqlite3
 from pathlib import Path
 
-# La base vive junto al ejecutable/proyecto para que sea 100% local y portable.
-DB_PATH = Path(os.environ.get("SKYTEC_DB", Path(__file__).resolve().parent.parent / "skytec.db"))
+from core.paths import app_data_dir
+
+# La base vive en el directorio de datos del sistema (ver core/paths.py), no
+# junto al ejecutable: instalada en Program Files, Windows deniega la
+# escritura ahí y la app no arranca. SKYTEC_DB sigue mandando si está seteada.
+DB_PATH = Path(os.environ.get("SKYTEC_DB", app_data_dir() / "skytec.db"))
 
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
+
+
+def _migrar_db_legado() -> None:
+    """Copia, una sola vez, una skytec.db vieja (de cuando vivía junto al
+    proyecto) al directorio de datos nuevo. Nunca borra el original. Si
+    SKYTEC_DB está seteada explícitamente, no hay "legado" que migrar."""
+    if "SKYTEC_DB" in os.environ:
+        return
+    legado = Path(__file__).resolve().parent.parent / "skytec.db"
+    if legado.exists() and legado != DB_PATH and not DB_PATH.exists():
+        shutil.copy2(legado, DB_PATH)
+        print(f"Migrado skytec.db legado ({legado}) -> {DB_PATH}")
 
 
 # ── Hash de PIN/contraseña ────────────────────────────────────────────────
@@ -133,14 +152,47 @@ MIGRATIONS: list[str] = [
     # igual que precio_unitario, no se recalcula si el producto cambia después.
     # Alimenta el Dashboard de las 3 líneas de negocio sin joins a productos.
     "ALTER TABLE venta_items ADD COLUMN categoria TEXT;",
+    # v4 — separa linea_negocio (eje fijo del Dashboard: 3 valores, CHECK) de
+    # categoria (libre, la define Oscar desde Ajustes). Antes de esto,
+    # productos.categoria mezclaba ambas cosas y un GROUP BY directo no daba
+    # 3 grupos. Ver CLAUDE.md sección 4.
+    """
+    CREATE TABLE categorias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        linea_negocio TEXT NOT NULL
+            CHECK (linea_negocio IN ('reparacion','tecnologia','suplemento')),
+        activa INTEGER NOT NULL DEFAULT 1
+    );
+
+    INSERT INTO categorias (nombre, linea_negocio) VALUES
+        ('Reparaciones', 'reparacion'),
+        ('Accesorios', 'tecnologia'),
+        ('Celulares', 'tecnologia'),
+        ('Suplementos', 'suplemento');
+
+    ALTER TABLE productos ADD COLUMN linea_negocio TEXT NOT NULL DEFAULT 'tecnologia'
+        CHECK (linea_negocio IN ('reparacion','tecnologia','suplemento'));
+
+    ALTER TABLE venta_items ADD COLUMN linea_negocio TEXT NOT NULL DEFAULT 'tecnologia'
+        CHECK (linea_negocio IN ('reparacion','tecnologia','suplemento'));
+    ALTER TABLE venta_items ADD COLUMN costo_unitario INTEGER NOT NULL DEFAULT 0;
+
+    ALTER TABLE ventas ADD COLUMN origen TEXT NOT NULL DEFAULT 'pos'
+        CHECK (origen IN ('pos','web','agenda'));
+    """,
 ]
 
 
 def init_db() -> None:
     """Crea la base si no existe y aplica migraciones pendientes."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _migrar_db_legado()
     conn = get_connection()
     try:
+        modo = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
+        if modo.lower() != "wal":
+            print(f"Advertencia: journal_mode quedó en '{modo}', no en 'wal'.")
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         for i in range(version, len(MIGRATIONS)):
             conn.executescript(MIGRATIONS[i])

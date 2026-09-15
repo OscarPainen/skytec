@@ -9,7 +9,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QDialog
 
-from core import database
+from core import backup, database
 from ui import styles
 from ui.login import LoginDialog
 from ui.main_window import MainWindow
@@ -17,6 +17,7 @@ from ui.main_window import MainWindow
 
 def main() -> int:
     database.init_db()
+    backup.hacer_backup_diario()  # nunca lanza: un respaldo roto no bloquea la venta
 
     app = QApplication(sys.argv)
     styles.apply_palette(app)

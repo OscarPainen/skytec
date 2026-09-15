@@ -1,9 +1,12 @@
 """Acceso a datos de Servicio Técnico.
 
 Bandeja de solicitudes (web + manuales), servicio (fecha, precio, detalles) y la
-integración con el PoS: al aceptar, el servicio genera una NOTA DE VENTA tipo
-`servicio_tecnico` (punto de unión con venta directa). Los "vencidos" se derivan
-de la fecha comprometida vs. hoy, sin job en segundo plano.
+integración con el PoS. La NOTA DE VENTA (tipo `servicio_tecnico`, punto de
+unión con venta directa) se genera al COMPLETAR el servicio (completar()), no
+al aceptar. Antes se generaba al aceptar: una reparación aceptada y nunca
+retirada quedaba contada como ingreso para siempre (Fase 1.5,
+docs/flujo-venta.md, hallazgo 1). Los "vencidos" se derivan de la fecha
+comprometida vs. hoy, sin job en segundo plano.
 """
 from __future__ import annotations
 
@@ -23,6 +26,13 @@ PEDIDOS = ("pendiente", "revisada")
 # estos estados SIN salirse de la lista de Agenda: cambiar de estado NO lo borra,
 # queda visible hasta que se elimine a mano. Agenda es el "PoS del servicio".
 AGENDADOS = ("aceptada", "en_reparacion", "completada", "no_retirada")
+
+# Dentro de AGENDADOS: "activos" es trabajo todavía abierto (nadie puede
+# perderlo de vista, por eso agenda_agendados() nunca los recorta);
+# "terminales" ya se cerró y solo importa como historial reciente (por eso
+# ahí sí se aplica el límite).
+ESTADOS_ACTIVOS_AGENDA = ("aceptada", "en_reparacion")
+ESTADOS_TERMINALES_AGENDA = ("completada", "no_retirada")
 
 
 def crear_solicitud_manual(
@@ -118,32 +128,72 @@ def guardar_servicio(
         conn.close()
 
 
-def aceptar(solicitud_id: int, usuario_id: int | None = None) -> int:
-    """El cliente aceptó: genera la nota de venta, agenda y cambia estado.
-
-    Devuelve el N° de nota (venta). Requiere precio guardado (> 0).
+def aceptar(solicitud_id: int, usuario_id: int | None = None) -> None:
+    """El cliente aceptó: agenda el servicio. YA NO genera la venta — el
+    ingreso se reconoce al completar() (ver más abajo), no acá. Requiere
+    precio guardado (> 0): sin precio no tiene sentido agendar un trabajo que
+    después no se sabría cuánto cobrar.
     """
     s = obtener(solicitud_id)
     if not s.get("precio"):
         raise ValueError("Primero guarda el precio del servicio.")
-    if s.get("venta_id"):
-        raise ValueError("Este servicio ya fue aceptado y tiene nota de venta.")
+    if s["estado"] not in PEDIDOS:
+        raise ValueError("Esta solicitud ya fue aceptada.")
 
-    linea = f"Servicio técnico: {s.get('tipo_servicio') or 'Reparación'} " \
-            f"{s.get('modelo_telefono') or ''}".strip()
-    venta_id = pos.registrar_venta(
-        [{"descripcion": linea, "cantidad": 1, "precio_unitario": int(s["precio"]),
-          "categoria": "reparacion"}],
-        pos_origen="Servicio Técnico", usuario_id=usuario_id, tipo="servicio_tecnico",
-    )
     conn = database.get_connection()
     try:
+        # servicios_tecnicos.estado: columna vestigial (Fase 1.5,
+        # docs/flujo-venta.md, hallazgo 4). Nada en el código la lee — el
+        # estado real que manda es solicitudes_reparacion.estado, abajo. Se
+        # sigue escribiendo por si algún día se retoma, pero no confíes en
+        # ella para nada nuevo.
         conn.execute(
-            "UPDATE servicios_tecnicos SET venta_id=?, estado='aceptada' WHERE solicitud_id=?",
-            (venta_id, solicitud_id),
+            "UPDATE servicios_tecnicos SET estado='aceptada' WHERE solicitud_id=?",
+            (solicitud_id,),
         )
         conn.execute(
             "UPDATE solicitudes_reparacion SET estado='aceptada' WHERE id=?",
+            (solicitud_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def completar(solicitud_id: int, usuario_id: int | None = None) -> int:
+    """Cierra el trabajo: ACÁ se genera la nota de venta (acá se reconoce el
+    ingreso, no al aceptar) y se marca 'completada'. Devuelve el N° de nota.
+    Bloquea completar dos veces (ya tiene venta_id) — mismo guardrail contra
+    doble cobro que antes vivía en aceptar().
+    """
+    s = obtener(solicitud_id)
+    if s.get("venta_id"):
+        raise ValueError("Este servicio ya tiene nota de venta.")
+    if s["estado"] not in AGENDADOS:
+        raise ValueError("Solo se puede completar un servicio ya agendado.")
+
+    linea = f"Servicio técnico: {s.get('tipo_servicio') or 'Reparación'} " \
+            f"{s.get('modelo_telefono') or ''}".strip()
+    # costo_unitario=0: el servicio técnico no tiene costo de repuestos
+    # modelado todavía. TODO: cuando exista catálogo de tipos de servicio con
+    # costo, reemplazar este 0 (backlog post-entrega, ver docs/plan-ejecucion.md).
+    venta_id = pos.registrar_venta(
+        [{"descripcion": linea, "cantidad": 1, "precio_unitario": int(s["precio"]),
+          "categoria": "reparacion", "linea_negocio": "reparacion", "costo_unitario": 0}],
+        pos_origen="Servicio Técnico", usuario_id=usuario_id, tipo="servicio_tecnico",
+        origen="web" if s.get("origen") == "web" else "agenda",
+    )
+    conn = database.get_connection()
+    try:
+        # estado='completada' acá también es vestigial, igual que en
+        # aceptar() (ver comentario ahí). venta_id SÍ importa: es lo que lee
+        # obtener()/_SELECT para saber si el servicio ya tiene nota de venta.
+        conn.execute(
+            "UPDATE servicios_tecnicos SET venta_id=?, estado='completada' WHERE solicitud_id=?",
+            (venta_id, solicitud_id),
+        )
+        conn.execute(
+            "UPDATE solicitudes_reparacion SET estado='completada' WHERE id=?",
             (solicitud_id,),
         )
         conn.commit()
@@ -153,6 +203,10 @@ def aceptar(solicitud_id: int, usuario_id: int | None = None) -> int:
 
 
 def cambiar_estado(solicitud_id: int, estado: str) -> None:
+    """Transición de estado SIN efectos de negocio. Para 'completada' no se
+    usa esta función desde la UI — hay que llamar a completar(), que es la
+    que genera la venta. Esta queda para 'en_reparacion' y 'no_retirada',
+    que son cambios de estado puros."""
     conn = database.get_connection()
     try:
         conn.execute(
@@ -183,14 +237,32 @@ def pedidos() -> list[dict]:
 
 
 def agenda_agendados(limite: int = 15) -> list[dict]:
-    """Vista principal de Agenda: los últimos N servicios agendados, en CUALQUIER
-    estado del ciclo (aceptada, en reparación, completada o no retirada).
+    """Vista principal de Agenda: TODOS los servicios activos (aceptada,
+    en_reparacion — trabajo todavía abierto, sin límite) más los últimos
+    `limite` servicios terminales (completada, no_retirada) como historial
+    reciente.
 
-    Clave: cambiar el estado de un servicio NO lo saca de esta lista (antes, marcar
-    'Completada' o 'No retirada' lo hacía desaparecer y parecía que se eliminaba).
-    El servicio queda guardado y visible hasta que se elimine a mano. `listar()` ya
-    ordena por más reciente, así que basta con recortar a los últimos `limite`."""
-    return [s for s in listar() if s["estado"] in AGENDADOS][:limite]
+    Antes recortaba a los últimos `limite` AGENDADOS mezclando activos y
+    terminales: con 15+ servicios cerrados más nuevos, un trabajo activo sin
+    terminar podía quedar invisible en TODA la UI (Fase 1.5,
+    docs/flujo-venta.md, hallazgo 2). `listar()` ya ordena por más reciente,
+    así que un solo recorrido preserva ese orden: cada activo se conserva
+    siempre, cada terminal se conserva solo hasta completar `limite`.
+
+    Clave (sin cambios): cambiar el estado de un servicio NO lo saca de esta
+    lista por sí solo (antes, marcar 'Completada' o 'No retirada' lo hacía
+    desaparecer y parecía que se eliminaba). El servicio queda guardado y
+    visible hasta que se elimine a mano o el cupo de terminales lo desplace."""
+    resultado: list[dict] = []
+    vistos_terminales = 0
+    for s in listar():
+        if s["estado"] in ESTADOS_ACTIVOS_AGENDA:
+            resultado.append(s)
+        elif s["estado"] in ESTADOS_TERMINALES_AGENDA:
+            if vistos_terminales < limite:
+                resultado.append(s)
+                vistos_terminales += 1
+    return resultado
 
 
 def vencidos() -> list[dict]:
@@ -240,30 +312,64 @@ if __name__ == "__main__":
     guardar_servicio(sid, "2020-01-01", 45000, "Pantalla OLED")
     assert obtener(sid)["estado"] == "revisada" and obtener(sid)["precio"] == 45000
 
-    vid = aceptar(sid)
+    # aceptar() YA NO genera venta (Fase 1.5, hallazgo 1)
+    aceptar(sid)
     s = obtener(sid)
-    assert s["estado"] == "aceptada" and s["venta_id"] == vid
-    # la nota de venta unificada existe y es de tipo servicio_tecnico
-    venta, items = pos.obtener_venta(vid)
-    assert venta.tipo == "servicio_tecnico" and "Servicio técnico" in items[0]["nombre"]
-    assert venta.total == 45000
+    assert s["estado"] == "aceptada" and s["venta_id"] is None, s["venta_id"]
 
-    # doble aceptación bloqueada
+    # doble aceptación bloqueada (ahora por estado, no por venta_id)
     try:
         aceptar(sid); raise AssertionError("no debe re-aceptar")
+    except ValueError:
+        pass
+
+    # completar sin haber aceptado -> error (usa una 2da solicitud aparte)
+    sid_sin_aceptar = crear_solicitud_manual("Xiaomi", "Beto", "b@x.cl", "56933334444",
+                                             "Bateria", "2027-01-01")  # entrega futura: no debe contar como vencido
+    guardar_servicio(sid_sin_aceptar, "2027-01-01", 20000, "x")
+    try:
+        completar(sid_sin_aceptar); raise AssertionError("no debe completar sin aceptar")
     except ValueError:
         pass
 
     # vencido: entrega 2020 < hoy y estado 'aceptada' (no completada/no_retirada)
     assert len(vencidos()) == 1
     # ya está agendada: aparece en Agenda y ya NO en la bandeja de pedidos
-    assert len(agenda_agendados()) == 1 and len(pedidos()) == 0
-    # --- el bug que reportó el cliente: marcar un estado NO debe sacar la fila de Agenda ---
-    cambiar_estado(sid, "completada")
-    assert len(vencidos()) == 0
-    assert len(agenda_agendados()) == 1, "completada NO debe desaparecer de Agenda"
+    assert len(agenda_agendados()) == 1 and len(pedidos()) == 1  # el pedido de Beto sigue pendiente
+
+    # --- EL FIX CENTRAL: agendar y marcar no_retirada SIN completar nunca
+    # no debe generar ninguna venta. Antes, aceptar() ya la había creado. ---
     cambiar_estado(sid, "no_retirada")
-    assert len(agenda_agendados()) == 1, "no_retirada tampoco debe desaparecer de Agenda"
+    assert len(agenda_agendados()) == 1, "no_retirada no debe sacar la fila de Agenda"
     assert len(no_retiradas()) == 1
+    conn = database.get_connection()
+    n_ventas = conn.execute("SELECT COUNT(*) FROM ventas").fetchone()[0]
+    conn.close()
+    assert n_ventas == 0, "no_retirada sin completar NUNCA debe generar venta"
+    assert obtener(sid)["venta_id"] is None
+
+    # ahora sí: completar() genera la venta con el precio correcto
+    vid = completar(sid)
+    s = obtener(sid)
+    assert s["estado"] == "completada" and s["venta_id"] == vid
+    venta, items = pos.obtener_venta(vid)
+    assert venta.tipo == "servicio_tecnico" and "Servicio técnico" in items[0]["nombre"]
+    assert venta.total == 45000
+    conn = database.get_connection()
+    origen = conn.execute("SELECT origen FROM ventas WHERE id=?", (vid,)).fetchone()[0]
+    conn.close()
+    assert origen == "agenda", origen  # la solicitud es 'manual'
+    assert len(agenda_agendados()) == 1, "completada NO debe desaparecer de Agenda"
+
+    # doble completar bloqueado (ya tiene venta_id)
+    try:
+        completar(sid); raise AssertionError("no debe completar dos veces")
+    except ValueError:
+        pass
+    conn = database.get_connection()
+    n_ventas = conn.execute("SELECT COUNT(*) FROM ventas").fetchone()[0]
+    conn.close()
+    assert n_ventas == 1, "doble completar no debe duplicar la venta"
+
     assert "iPhone 13" in whatsapp_texto(sid)
     print("OK servicio_tecnico/repo.py")

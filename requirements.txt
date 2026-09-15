@@ -7,3 +7,6 @@ python-escpos>=3.0   # impresión térmica ESC/POS
 
 # Fase 6 (sincronización):       firebase-admin>=6.5
 # Fase 7 (empaquetado):          pyinstaller>=6.0
+
+# Desarrollo (no se empaqueta con la app):
+# pytest>=8.0

@@ -33,10 +33,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.config import cargar_config
 from core.models import Producto, Usuario
+from modules.ajustes import repo as ajustes_repo
 from modules.inventario import repo
 from ui import styles
+
+# Mismas etiquetas que modules/ajustes/page.py (LINEAS_LABELS); si un día se
+# repite en un tercer lugar, vale la pena moverlo a un módulo compartido.
+LINEAS_LABELS = [
+    ("Reparación", "reparacion"),
+    ("Tecnología", "tecnologia"),
+    ("Suplementos", "suplemento"),
+]
 
 ASSETS = Path(__file__).resolve().parents[2] / "assets" / "productos"
 CARD_W = 220        # ancho fijo de tarjeta; las columnas fluyen según el ancho
@@ -387,10 +395,12 @@ class NuevoProductoDialog(QDialog):
         # Campos (mismos widgets y nombres de antes)
         self.nombre = QLineEdit()
         self.nombre.setPlaceholderText("Ej: Cargador USB-C 20W")
+        self.linea = QComboBox()
+        for etiqueta, valor in LINEAS_LABELS:
+            self.linea.addItem(etiqueta, valor)
+        self.linea.currentIndexChanged.connect(self._cargar_categorias_de_linea)
         self.categoria = QComboBox()
-        self.categoria.addItem("Sin categoría", "")
-        for cat in cargar_config()["categorias"]:
-            self.categoria.addItem(cat, cat)
+        self._cargar_categorias_de_linea()
         self.precio = _spin_clp()
         self.costo = _spin_clp()
         self.stock = QSpinBox()
@@ -399,6 +409,7 @@ class NuevoProductoDialog(QDialog):
         self.descripcion.setPlaceholderText("Opcional")
 
         root.addLayout(self._campo("Nombre", self.nombre, obligatorio=True))
+        root.addLayout(self._campo("Línea de negocio", self.linea, obligatorio=True))
         root.addLayout(self._campo("Categoría", self.categoria))
 
         fila_nums = QHBoxLayout()
@@ -455,6 +466,23 @@ class NuevoProductoDialog(QDialog):
         cont.addWidget(widget)
         return cont
 
+    def _cargar_categorias_de_linea(self) -> None:
+        """Repuebla el combo de categoría según la línea elegida. Sin opción
+        vacía: si la línea no tiene categorías activas todavía, se avisa acá
+        en vez de dejar el combo mudo (evita un guardado con categoría "")."""
+        actual = self.categoria.currentData()
+        self.categoria.blockSignals(True)
+        self.categoria.clear()
+        cats = ajustes_repo.listar_categorias(linea=self.linea.currentData())
+        for cat in cats:
+            self.categoria.addItem(cat["nombre"], cat["nombre"])
+        if not cats:
+            self.categoria.addItem("(sin categorías en esta línea — crea una en Ajustes)", "")
+        idx = self.categoria.findData(actual)
+        if idx >= 0:
+            self.categoria.setCurrentIndex(idx)
+        self.categoria.blockSignals(False)
+
     def _set_thumb_placeholder(self) -> None:
         if styles.qta is not None:
             self.img_thumb.setPixmap(
@@ -492,6 +520,7 @@ class NuevoProductoDialog(QDialog):
             costo=self.costo.value(),
             stock_inicial=self.stock.value(),
             categoria=self.categoria.currentData() or "",
+            linea_negocio=self.linea.currentData(),
             descripcion=self.descripcion.text().strip(),
             imagen_path=imagen_nombre,
             usuario_id=self.usuario.id,
@@ -632,7 +661,7 @@ class _LecturaWorker(QThread):
 
 # ── Vista previa de la importación ──────────────────────────────────────────
 class ImportPreviewDialog(QDialog):
-    _COLS = ["Fila", "Nombre", "Categoría", "Precio", "Costo", "Stock", "Disp.", "Estado"]
+    _COLS = ["Fila", "Nombre", "Categoría", "Línea", "Precio", "Costo", "Stock", "Disp.", "Estado"]
 
     def __init__(self, filas: list, usuario: Usuario, parent=None) -> None:
         super().__init__(parent)
@@ -662,7 +691,7 @@ class ImportPreviewDialog(QDialog):
         tabla.setEditTriggers(QTableWidget.NoEditTriggers)
         tabla.verticalHeader().setVisible(False)
         tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        tabla.horizontalHeader().setSectionResizeMode(7, QHeaderView.Stretch)
+        tabla.horizontalHeader().setSectionResizeMode(8, QHeaderView.Stretch)
 
         rojo = QColor(254, 226, 226)
         ambar = QColor(254, 243, 199)
@@ -674,7 +703,7 @@ class ImportPreviewDialog(QDialog):
             else:
                 estado, color = "OK", None
             celdas = [
-                str(f.numero_fila), f.nombre, f.categoria, clp(f.precio_venta),
+                str(f.numero_fila), f.nombre, f.categoria, f.linea_negocio, clp(f.precio_venta),
                 clp(f.costo), str(f.stock_inicial), "Sí" if f.disponible else "No",
                 estado,
             ]
@@ -682,7 +711,7 @@ class ImportPreviewDialog(QDialog):
                 item = QTableWidgetItem(texto)
                 if color is not None:
                     item.setBackground(color)
-                if c == 7 and not f.valida:
+                if c == 8 and not f.valida:
                     item.setToolTip(f.error)
                 tabla.setItem(r, c, item)
         lay.addWidget(tabla, 1)

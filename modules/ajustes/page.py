@@ -24,10 +24,18 @@ from PySide6.QtWidgets import (
 )
 
 from core import database, printing
-from core.config import cargar_config, guardar_config
 from core.models import Usuario
+from modules.ajustes import repo
 from ui import styles
 from workers.printing import PrintWorker
+
+# Etiquetas legibles para la UI; los valores son los que exige el CHECK de
+# la base (core/database.py, migración v4) y repo.LINEAS_NEGOCIO.
+LINEAS_LABELS = [
+    ("Reparación", "reparacion"),
+    ("Tecnología", "tecnologia"),
+    ("Suplementos", "suplemento"),
+]
 
 
 class AjustesPage(QWidget):
@@ -81,10 +89,9 @@ class AjustesPage(QWidget):
 
         # ── Categorías ─────────────────────────────────────────────────────
         self._seccion("Categorías")
-        self._cfg = cargar_config()
         ayuda_cat = QLabel(
-            "Se usan para etiquetar cada venta (reparación / tecnología / "
-            "suplemento) y alimentan el Dashboard."
+            "Cada categoría pertenece a una línea de negocio (reparación / "
+            "tecnología / suplemento): esa línea es la que alimenta el Dashboard."
         )
         ayuda_cat.setObjectName("Subtitle")
         self.form.addWidget(ayuda_cat)
@@ -94,6 +101,10 @@ class AjustesPage(QWidget):
         self.nueva_categoria = QLineEdit()
         self.nueva_categoria.setPlaceholderText("Nueva categoría…")
         fila_cat.addWidget(self.nueva_categoria, 1)
+        self.nueva_linea = QComboBox()
+        for etiqueta, valor in LINEAS_LABELS:
+            self.nueva_linea.addItem(etiqueta, valor)
+        fila_cat.addWidget(self.nueva_linea)
         btn_agregar_cat = QPushButton("Agregar")
         styles.style_button(btn_agregar_cat, "secondary", "fa5s.plus")
         btn_agregar_cat.clicked.connect(self._agregar_categoria)
@@ -201,7 +212,7 @@ class AjustesPage(QWidget):
     # ── Categorías ───────────────────────────────────────────────────────────
     def _refrescar_categorias(self) -> None:
         self.lista_categorias.clear()
-        for cat in self._cfg["categorias"]:
+        for cat in repo.listar_categorias():
             item = QListWidgetItem()
             # El QSS global de QListWidget::item agrega 12px de padding arriba/abajo
             # + 2px de margen (ver ui/styles.py): con menos alto que eso más el tamaño
@@ -211,73 +222,46 @@ class AjustesPage(QWidget):
             self.lista_categorias.addItem(item)
             self.lista_categorias.setItemWidget(item, self._fila_categoria(cat))
 
-    def _fila_categoria(self, categoria: str) -> QWidget:
+    def _fila_categoria(self, cat: dict) -> QWidget:
+        etiqueta_linea = dict((v, k) for k, v in LINEAS_LABELS).get(cat["linea_negocio"])
         w = QWidget()
         h = QHBoxLayout(w)
         h.setContentsMargins(4, 0, 4, 0)
-        h.addWidget(QLabel(categoria), 0, Qt.AlignVCenter)
+        h.addWidget(QLabel(f"{cat['nombre']} — {etiqueta_linea}"), 0, Qt.AlignVCenter)
         h.addStretch()
         quitar = QPushButton()
         styles.style_button(quitar, "icon_danger", "fa5s.times")
         quitar.setToolTip("Eliminar categoría")
-        quitar.clicked.connect(lambda _=False, c=categoria: self._quitar_categoria(c))
+        quitar.clicked.connect(lambda _=False, c=cat: self._quitar_categoria(c))
         h.addWidget(quitar, 0, Qt.AlignVCenter)
         return w
 
     def _agregar_categoria(self) -> None:
-        nueva = self.nueva_categoria.text().strip()
-        if not nueva:
+        nombre = self.nueva_categoria.text().strip()
+        if not nombre:
             return
-        if nueva.lower() in [c.lower() for c in self._cfg["categorias"]]:
-            QMessageBox.information(self, "Categorías", "Esa categoría ya existe.")
+        try:
+            repo.crear_categoria(nombre, self.nueva_linea.currentData())
+        except ValueError as e:
+            QMessageBox.information(self, "Categorías", str(e))
             return
-        self._cfg["categorias"].append(nueva)
-        guardar_config(self._cfg)
         self.nueva_categoria.clear()
         self._refrescar_categorias()
 
-    def _quitar_categoria(self, categoria: str) -> None:
-        if self._categoria_tiene_ventas(categoria):
-            QMessageBox.warning(
-                self, "No se puede eliminar",
-                f"«{categoria}» tiene ventas registradas. No se puede eliminar "
-                "una categoría con historial.",
-            )
+    def _quitar_categoria(self, cat: dict) -> None:
+        en_uso = repo.tiene_ventas(cat["nombre"]) or repo.tiene_productos(cat["nombre"])
+        if en_uso:
+            if QMessageBox.question(
+                self, "Categoría en uso",
+                f"«{cat['nombre']}» tiene ventas o productos con historial: no se "
+                "puede eliminar. ¿Desactivarla en su lugar? Deja de aparecer en "
+                "los selectores, pero el historial que ya la usa no se toca.",
+            ) == QMessageBox.Yes:
+                repo.desactivar_categoria(cat["id"])
+                self._refrescar_categorias()
             return
-        if self._categoria_tiene_productos(categoria):
-            QMessageBox.warning(
-                self, "No se puede eliminar",
-                f"No se puede eliminar «{categoria}»: todavía hay productos "
-                "con esta categoría.",
-            )
-            return
-        self._cfg["categorias"] = [c for c in self._cfg["categorias"] if c != categoria]
-        guardar_config(self._cfg)
+        repo.eliminar_categoria(cat["id"])
         self._refrescar_categorias()
-
-    @staticmethod
-    def _categoria_tiene_ventas(categoria: str) -> bool:
-        # Solo lectura: consulta la foto de categoría guardada en cada venta.
-        conn = database.get_connection()
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM venta_items WHERE categoria=?", (categoria,)
-            ).fetchone()
-            return row[0] > 0
-        finally:
-            conn.close()
-
-    @staticmethod
-    def _categoria_tiene_productos(categoria: str) -> bool:
-        # Solo lectura: productos de inventario (vendidos o no) en esa categoría.
-        conn = database.get_connection()
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM productos WHERE categoria=?", (categoria,)
-            ).fetchone()
-            return row[0] > 0
-        finally:
-            conn.close()
 
     # ── Acciones ─────────────────────────────────────────────────────────────
     def _elegir_logo(self) -> None:

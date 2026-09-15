@@ -1,8 +1,9 @@
 """Módulo Servicio Técnico — bandeja de solicitudes y gestión de cada servicio.
 
 La sincronización con Firebase (solicitudes web) llega en la Fase 6; aquí se
-crean manualmente y se gestionan. "Cliente aceptó" desemboca en la nota de venta
-unificada (reutiliza NotaVentaDialog del PoS).
+crean manualmente y se gestionan. "Cliente aceptó" solo agenda el trabajo;
+al marcarlo "Completada" es cuando se genera la nota de venta unificada
+(reutiliza NotaVentaDialog del PoS) — ver modules/servicio_tecnico/repo.py.
 """
 from __future__ import annotations
 
@@ -209,16 +210,10 @@ class SolicitudDialog(QDialog):
     # MainWindow que salte a la pestaña Agenda.
     aceptada = Signal()
 
-    def __init__(
-        self, solicitud_id: int, usuario: Usuario, parent=None, mostrar_nota: bool = False,
-    ) -> None:
+    def __init__(self, solicitud_id: int, usuario: Usuario, parent=None) -> None:
         super().__init__(parent)
         self.solicitud_id = solicitud_id
         self.usuario = usuario
-        # mostrar_nota=True solo cuando se abre desde Agenda: ahí sí tiene sentido
-        # ver/generar la nota de venta. Desde Servicio Técnico ya no se muestra:
-        # esa pestaña se queda solo con las solicitudes.
-        self.mostrar_nota = mostrar_nota
         self.s = repo.obtener(solicitud_id)
         self.setWindowTitle(f"Solicitud — {self.s.get('cliente_nombre') or ''}")
         self.setMinimumWidth(480)
@@ -274,7 +269,11 @@ class SolicitudDialog(QDialog):
         styles.style_button(wa, "secondary", "fa5b.whatsapp")
         wa.clicked.connect(self._whatsapp)
         f1.addWidget(wa)
-        if self.mostrar_nota and self.s.get("venta_id"):
+        if self.s.get("venta_id"):
+            # Visible sin importar desde dónde se abrió el diálogo (antes
+            # solo desde Agenda): si el servicio ya tiene nota de venta,
+            # tiene que poder verse/reimprimirse desde cualquier lado donde
+            # se lo encuentre (Fase 1.5, docs/flujo-venta.md, hallazgo 3).
             nota = QPushButton("Ver nota de venta")
             styles.style_button(nota, "secondary", "fa5s.receipt")
             nota.clicked.connect(self._ver_nota)
@@ -283,7 +282,9 @@ class SolicitudDialog(QDialog):
         self.btn_aceptar = QPushButton("Cliente aceptó")
         styles.style_button(self.btn_aceptar, "primary", "fa5s.check-circle")
         self.btn_aceptar.clicked.connect(self._aceptar)
-        self.btn_aceptar.setEnabled(not self.s.get("venta_id"))
+        # Ya no depende de venta_id (aceptar() no genera venta): se habilita
+        # mientras la solicitud siga siendo un "pedido" sin agendar todavía.
+        self.btn_aceptar.setEnabled(self.s["estado"] in repo.PEDIDOS)
         f1.addWidget(self.btn_aceptar)
         lay.addLayout(f1)
 
@@ -338,8 +339,8 @@ class SolicitudDialog(QDialog):
         self.aceptada.emit()
         QMessageBox.information(
             self, "Solicitud aceptada",
-            "La solicitud quedó agendada. Genera la nota de venta desde la"
-            " pestaña Agenda.",
+            "La solicitud quedó agendada. La nota de venta se genera cuando"
+            " el trabajo esté listo y marques «Completada».",
         )
         self.accept()
 
@@ -347,7 +348,21 @@ class SolicitudDialog(QDialog):
         NotaVentaDialog(self.s["venta_id"], self).exec()
 
     def _estado(self, estado: str) -> None:
-        repo.cambiar_estado(self.solicitud_id, estado)
+        if estado == "completada":
+            # completada SÍ tiene efecto de negocio (genera la nota de venta):
+            # no puede ser un cambio de estado genérico. Ver repo.completar().
+            try:
+                repo.completar(self.solicitud_id, self.usuario.id)
+            except ValueError as e:
+                QMessageBox.warning(self, "No se pudo completar", str(e))
+                return
+            QMessageBox.information(
+                self, "Servicio completado",
+                "Se generó la nota de venta. Podés verla e imprimirla desde"
+                " la pestaña Agenda.",
+            )
+        else:
+            repo.cambiar_estado(self.solicitud_id, estado)
         self.accept()
 
     def _eliminar(self) -> None:

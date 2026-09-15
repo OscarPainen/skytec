@@ -11,3 +11,4 @@ dist/
 .DS_Store
 *.spec
 ESTADO_PROYECTO.txt
+.pytest_cache/
