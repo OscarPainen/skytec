@@ -53,6 +53,34 @@ def crear_solicitud_manual(
         conn.close()
 
 
+def insertar_desde_firestore(mapeado: dict) -> int | None:
+    """Inserta una solicitud bajada de Firestore (ya pasada por
+    core.firebase_sync.mapear_solicitud_firestore). Devuelve el id local
+    nuevo, o None si esa solicitud ya existía.
+
+    INSERT OR IGNORE apoyado en firebase_id UNIQUE: la idempotencia la da
+    la restricción de la base, no una consulta previa de "¿ya existe?" —
+    esa consulta sería una condición de carrera (Fase 3, ver
+    core.firebase_sync.sincronizar_una_vez)."""
+    conn = database.get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO solicitudes_reparacion "
+            "(modelo_telefono, cliente_nombre, cliente_email, cliente_telefono, "
+            "tipo_servicio, tipo_servicio_detalle, fecha_entrega_solicitada, "
+            "estado, origen, firebase_id, creado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (mapeado["modelo_telefono"], mapeado["cliente_nombre"], mapeado["cliente_email"],
+             mapeado["cliente_telefono"], mapeado["tipo_servicio"],
+             mapeado["tipo_servicio_detalle"], mapeado["fecha_entrega_solicitada"],
+             mapeado["estado"], mapeado["origen"], mapeado["firebase_id"],
+             mapeado["creado_en"]),
+        )
+        conn.commit()
+        return cur.lastrowid if cur.rowcount else None
+    finally:
+        conn.close()
+
+
 def _fila(row: dict) -> dict:
     d = dict(row)
     hoy = date.today().isoformat()

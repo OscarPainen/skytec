@@ -213,6 +213,13 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_venta_items_venta ON venta_items(venta_id);
     CREATE INDEX IF NOT EXISTS idx_venta_items_linea ON venta_items(linea_negocio);
     """,
+    # v6 — sincronización con Firebase (Fase 3). 'nueva'/'sincronizada' son
+    # estados del lado Firestore, no del lado local: el CHECK de `estado` no
+    # se toca, el mapeo pasa "nueva" -> 'pendiente' al insertar.
+    """
+    ALTER TABLE solicitudes_reparacion ADD COLUMN tipo_servicio_detalle TEXT;
+    ALTER TABLE solicitudes_reparacion ADD COLUMN sincronizado_en TEXT;
+    """,
 ]
 
 
@@ -248,6 +255,7 @@ DEFAULT_CONFIG = {
     "impresora_serial": "COM1",         # conexión serial
     "impresora_usb_vendor": "0x0416",   # conexión USB (VID/PID de la impresora)
     "impresora_usb_product": "0x5011",
+    "sync_intervalo_segundos": "3600",  # 1 hora — Oscar prefiere esto a polling agresivo
 }
 
 

@@ -1,9 +1,11 @@
 """Módulo Servicio Técnico — bandeja de solicitudes y gestión de cada servicio.
 
-La sincronización con Firebase (solicitudes web) llega en la Fase 6; aquí se
-crean manualmente y se gestionan. "Cliente aceptó" solo agenda el trabajo;
-al marcarlo "Completada" es cuando se genera la nota de venta unificada
-(reutiliza NotaVentaDialog del PoS) — ver modules/servicio_tecnico/repo.py.
+Las solicitudes se crean manualmente o llegan sincronizadas desde
+skytec-web vía Firebase (Fase 3: workers/sync.py hace un ciclo automático
+cada 1 hora en segundo plano; el botón "Actualización rápida" acá dispara
+uno al toque). "Cliente aceptó" solo agenda el trabajo; al marcarlo
+"Completada" es cuando se genera la nota de venta unificada (reutiliza
+NotaVentaDialog del PoS) — ver modules/servicio_tecnico/repo.py.
 """
 from __future__ import annotations
 
@@ -34,6 +36,7 @@ from core.models import Usuario
 from modules.inventario.page import clp
 from modules.pos.page import NotaVentaDialog
 from modules.servicio_tecnico import repo
+from workers.sync import SincronizarAhoraWorker
 from ui import styles
 
 ESTADOS = {
@@ -83,6 +86,14 @@ class ServicioTecnicoPage(QWidget):
             self.filtro.addItem(texto, clave)
         self.filtro.currentIndexChanged.connect(self.recargar)
         cab.addWidget(self.filtro)
+        self.btn_actualizar = QPushButton("Actualización rápida")
+        styles.style_button(self.btn_actualizar, "secondary", "fa5s.sync-alt")
+        self.btn_actualizar.setToolTip(
+            "Baja ahora las solicitudes nuevas de Firebase, sin esperar al "
+            "ciclo automático (cada 1 hora)."
+        )
+        self.btn_actualizar.clicked.connect(self._sincronizar_ahora)
+        cab.addWidget(self.btn_actualizar)
         nueva = QPushButton("Nueva solicitud")
         styles.style_button(nueva, "primary", "fa5s.plus")
         nueva.clicked.connect(self._nueva)
@@ -142,6 +153,31 @@ class ServicioTecnicoPage(QWidget):
     def _nueva(self) -> None:
         if NuevaSolicitudDialog(self).exec() == QDialog.Accepted:
             self.recargar()
+
+    def _sincronizar_ahora(self) -> None:
+        self.btn_actualizar.setEnabled(False)
+        self.btn_actualizar.setText("Sincronizando…")
+        self._sync_worker = SincronizarAhoraWorker(self)
+        self._sync_worker.ok.connect(self._sincronizacion_ok)
+        self._sync_worker.error.connect(self._sincronizacion_error)
+        self._sync_worker.start()
+
+    def _restaurar_boton_actualizar(self) -> None:
+        self.btn_actualizar.setEnabled(True)
+        self.btn_actualizar.setText("Actualización rápida")
+
+    def _sincronizacion_ok(self, n: int) -> None:
+        self._restaurar_boton_actualizar()
+        self.recargar()
+        mensaje = (
+            f"Se recibieron {n} solicitud(es) nueva(s)." if n
+            else "No hay solicitudes nuevas."
+        )
+        QMessageBox.information(self, "Actualización rápida", mensaje)
+
+    def _sincronizacion_error(self, mensaje: str) -> None:
+        self._restaurar_boton_actualizar()
+        QMessageBox.warning(self, "No se pudo sincronizar", mensaje)
 
 
 class NuevaSolicitudDialog(QDialog):

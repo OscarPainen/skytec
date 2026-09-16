@@ -98,10 +98,12 @@ class SolicitudReparacion(_Base):
     cliente_email: str | None
     cliente_telefono: str | None
     tipo_servicio: str | None
+    tipo_servicio_detalle: str | None
     fecha_entrega_solicitada: str | None
     estado: str
     origen: str  # web | manual
     firebase_id: str | None
+    sincronizado_en: str | None
     creado_en: str
 
 

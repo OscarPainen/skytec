@@ -281,6 +281,14 @@ def build_stylesheet() -> str:
     /* Indicador de conexión */
     QLabel#StatusOnline {{ color: {OK}; }}
     QLabel#StatusOffline {{ color: {TEXT_ON_DARK}; }}
+
+    /* Contador discreto (solicitudes nuevas sin revisar en Servicio Técnico) */
+    QLabel#Badge {{
+        background: {DANGER}; color: {TEXT_ON_ACCENT};
+        border-radius: 9px; min-width: 18px; max-width: 18px; min-height: 18px;
+        max-height: 18px; font-size: 11px; font-weight: 700;
+        qproperty-alignment: AlignCenter; margin-right: {S1}px;
+    }}
     """
 
 

@@ -12,3 +12,7 @@ dist/
 *.spec
 ESTADO_PROYECTO.txt
 .pytest_cache/
+# Credencial de Firebase Admin SDK (Fase 3): nunca se commitea ni se
+# empaqueta. Vive en el directorio de datos del usuario (core/paths.py).
+serviceAccount.json
+*serviceAccount*.json

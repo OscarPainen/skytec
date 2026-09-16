@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from core import database
 from core.models import Usuario
 from ui import styles
+from workers.sync import SyncWorker
 
 try:  # qtawesome es opcional: sin él la UI funciona igual, solo sin íconos.
     import qtawesome as qta
@@ -96,6 +97,44 @@ class MainWindow(QMainWindow):
         self.botones.buttons()[0].setChecked(True)
         self.stack.setCurrentIndex(0)
 
+        # Sincronización con Firebase (Fase 3): si no hay credenciales
+        # configuradas, el worker termina solo sin error — no bloquea nada.
+        self._sin_revisar = 0
+        intervalo = int(database.get_config("sync_intervalo_segundos", "3600") or 3600)
+        self._sync_worker = SyncWorker(intervalo, self)
+        self._sync_worker.conexion_cambiada.connect(self.set_estado_conexion)
+        self._sync_worker.solicitudes_recibidas.connect(self._solicitudes_recibidas)
+        self._sync_worker.error_sync.connect(self._sync_error)
+        self._sync_worker.start()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self._sync_worker.solicitar_detencion()
+        self._sync_worker.wait(3000)
+        super().closeEvent(event)
+
+    def _solicitudes_recibidas(self, n: int) -> None:
+        """Al llegar solicitudes nuevas: refresca Servicio Técnico si ya
+        está construida (sin abrir diálogos ni robar el foco — puede haber
+        una venta en curso) y suma al contador discreto de la pestaña."""
+        pagina = self.paginas.get("Servicio Técnico")
+        if pagina is not None and hasattr(pagina, "recargar"):
+            pagina.recargar()
+        self._sin_revisar += n
+        self._actualizar_badge()
+
+    def _sync_error(self, mensaje: str) -> None:
+        # Sin logging propio en el proyecto todavía: igual que el resto del
+        # código, se deja constancia por consola. No bloquea nada — el
+        # indicador de conexión ya avisa visualmente.
+        print(f"Sincronización: {mensaje}")
+
+    def _actualizar_badge(self) -> None:
+        if self._sin_revisar > 0:
+            self.badge_servicio_tecnico.setText(str(self._sin_revisar))
+            self.badge_servicio_tecnico.show()
+        else:
+            self.badge_servicio_tecnico.hide()
+
     def _construir_pagina(self, etiqueta: str, nota: str) -> QWidget:
         """Página real si el módulo ya está implementado; si no, estado vacío."""
         if etiqueta == "Dashboard":
@@ -142,6 +181,10 @@ class MainWindow(QMainWindow):
         self.botones = QButtonGroup(self)
         self.botones.setExclusive(True)
         for i, (etiqueta, icono, _nota) in enumerate(MODULOS):
+            fila = QHBoxLayout()
+            fila.setContentsMargins(0, 0, 0, 0)
+            fila.setSpacing(0)
+
             btn = QPushButton(etiqueta)
             btn.setObjectName("NavButton")
             btn.setCheckable(True)
@@ -149,9 +192,20 @@ class MainWindow(QMainWindow):
             ico = _icon(icono)
             if ico:
                 btn.setIcon(ico)
-            btn.clicked.connect(lambda _=False, idx=i: self.stack.setCurrentIndex(idx))
+            btn.clicked.connect(lambda _=False, idx=i, et=etiqueta: self._cambiar_pagina(idx, et))
             self.botones.addButton(btn, i)
-            lay.addWidget(btn)
+            fila.addWidget(btn, 1)
+
+            if etiqueta == "Servicio Técnico":
+                # Contador discreto de solicitudes nuevas sin revisar,
+                # llegadas por sincronización (Fase 3). Se limpia al entrar
+                # a la pestaña (ver _cambiar_pagina).
+                self.badge_servicio_tecnico = QLabel("")
+                self.badge_servicio_tecnico.setObjectName("Badge")
+                self.badge_servicio_tecnico.hide()
+                fila.addWidget(self.badge_servicio_tecnico)
+
+            lay.addLayout(fila)
 
         lay.addStretch()
         self.status = QLabel("Sin conexión")
@@ -159,6 +213,12 @@ class MainWindow(QMainWindow):
         self.status.setContentsMargins(styles.S2, 0, styles.S2, 0)
         lay.addWidget(self.status)
         return side
+
+    def _cambiar_pagina(self, idx: int, etiqueta: str) -> None:
+        self.stack.setCurrentIndex(idx)
+        if etiqueta == "Servicio Técnico":
+            self._sin_revisar = 0
+            self._actualizar_badge()
 
     def _ir_a_agenda(self) -> None:
         """Cambia a la pestaña Agenda (se llama al aceptar una solicitud en
