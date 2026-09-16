@@ -28,6 +28,8 @@ class Usuario(_Base):
     nombre: str
     rol: str  # admin | vendedor
     pin_o_password: str
+    email: str | None
+    debe_cambiar_password: int
 
     @property
     def es_admin(self) -> bool:

@@ -58,6 +58,62 @@ def verify_password(password: str, stored: str) -> bool:
     return hash_password(password, bytes.fromhex(salt_hex)) == stored
 
 
+# ── Login inicial forzado + recuperación por correo ─────────────────────────
+def autenticar(nombre: str, clave: str) -> sqlite3.Row | None:
+    """None si el usuario no existe o la clave no coincide. Devuelve la fila
+    completa (no un Usuario) para que el llamador pueda ver
+    debe_cambiar_password antes de decidir si el login ya terminó."""
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM usuarios WHERE nombre=?", (nombre,)).fetchone()
+    finally:
+        conn.close()
+    if row and verify_password(clave, row["pin_o_password"]):
+        return row
+    return None
+
+
+def completar_primer_ingreso(usuario_id: int, nueva_clave: str, email: str) -> None:
+    """Cierra el flujo de cambio obligatorio: nueva clave + correo (el
+    correo hace falta para que la recuperación por Resend tenga a dónde
+    mandar la clave temporal más adelante)."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE usuarios SET pin_o_password=?, email=?, debe_cambiar_password=0 "
+            "WHERE id=?",
+            (hash_password(nueva_clave), email, usuario_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def obtener_email_usuario(nombre: str) -> str | None:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT email FROM usuarios WHERE nombre=?", (nombre,)).fetchone()
+    finally:
+        conn.close()
+    return row["email"] if row and row["email"] else None
+
+
+def aplicar_password_temporal(nombre: str, password_temporal: str) -> None:
+    """Guarda la clave temporal YA ENVIADA por correo (ver
+    core/email_resend.py: nunca se llama a esto si el envío falló, para no
+    dejar a nadie afuera). Vuelve a pedir cambio obligatorio en el próximo
+    login: una clave temporal no puede quedar como la definitiva."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE usuarios SET pin_o_password=?, debe_cambiar_password=1 WHERE nombre=?",
+            (hash_password(password_temporal), nombre),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ── Migraciones ───────────────────────────────────────────────────────────
 # Lista ordenada. Índice+1 == versión. Agregar SQL al final nunca reordenar.
 MIGRATIONS: list[str] = [
@@ -220,6 +276,17 @@ MIGRATIONS: list[str] = [
     ALTER TABLE solicitudes_reparacion ADD COLUMN tipo_servicio_detalle TEXT;
     ALTER TABLE solicitudes_reparacion ADD COLUMN sincronizado_en TEXT;
     """,
+    # v7 — login inicial forzado + recuperación de contraseña por correo.
+    # El UPDATE final es a propósito retroactivo: cualquier usuario que ya
+    # existía (el admin sembrado con 1234, por ejemplo) queda marcado para
+    # pasar por el cambio obligatorio la próxima vez que entre — no solo
+    # los usuarios nuevos. Sin esto, una base ya instalada nunca forzaría
+    # el cambio del admin/1234 original.
+    """
+    ALTER TABLE usuarios ADD COLUMN email TEXT;
+    ALTER TABLE usuarios ADD COLUMN debe_cambiar_password INTEGER NOT NULL DEFAULT 0;
+    UPDATE usuarios SET debe_cambiar_password = 1;
+    """,
 ]
 
 
@@ -262,8 +329,13 @@ DEFAULT_CONFIG = {
 def _seed_defaults(conn: sqlite3.Connection) -> None:
     """Datos mínimos para poder abrir la app: admin inicial y config base."""
     if conn.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0:
+        # debe_cambiar_password=1: en una base nueva, el admin sembrado con
+        # la clave conocida "1234" tiene que cambiarla en el primer login,
+        # no quedar así indefinidamente (ver también migración v7, que hace
+        # lo mismo de forma retroactiva para bases que ya existían).
         conn.execute(
-            "INSERT INTO usuarios (nombre, rol, pin_o_password) VALUES (?,?,?)",
+            "INSERT INTO usuarios (nombre, rol, pin_o_password, debe_cambiar_password) "
+            "VALUES (?,?,?,1)",
             ("admin", "admin", hash_password("1234")),
         )
     for clave, valor in DEFAULT_CONFIG.items():
@@ -310,5 +382,26 @@ if __name__ == "__main__":
     assert c.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 1, "admin duplicado"
     stored = c.execute("SELECT pin_o_password FROM usuarios WHERE nombre='admin'").fetchone()[0]
     assert verify_password("1234", stored) and not verify_password("0000", stored)
+
+    # login inicial forzado: el admin sembrado debe pedir cambio de clave
+    fila = c.execute("SELECT id, debe_cambiar_password FROM usuarios WHERE nombre='admin'").fetchone()
+    assert fila["debe_cambiar_password"] == 1, "el admin sembrado debe forzar el cambio"
+    admin_id = fila["id"]
     c.close()
+
+    assert autenticar("admin", "1234") is not None
+    assert autenticar("admin", "clave_mala") is None
+    assert autenticar("no_existe", "1234") is None
+
+    completar_primer_ingreso(admin_id, "nueva_clave_segura", "admin@skytec.cl")
+    assert autenticar("admin", "1234") is None, "la clave vieja no debe seguir sirviendo"
+    fila2 = autenticar("admin", "nueva_clave_segura")
+    assert fila2 is not None and fila2["debe_cambiar_password"] == 0
+    assert obtener_email_usuario("admin") == "admin@skytec.cl"
+
+    aplicar_password_temporal("admin", "temporal123")
+    fila3 = autenticar("admin", "temporal123")
+    assert fila3 is not None and fila3["debe_cambiar_password"] == 1, \
+        "una clave temporal debe forzar el cambio de nuevo"
+
     print("OK database.py")

@@ -7,7 +7,6 @@ Grilla de 8px.
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIntValidator, QPalette
@@ -18,6 +17,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QWidget,
 )
+
+from core.paths import app_data_dir
 
 try:  # qtawesome opcional: sin él, los botones quedan sin ícono pero funcionan.
     import qtawesome as qta
@@ -80,7 +81,9 @@ def _chevron_url() -> str:
     if qta is None:
         return ""
     try:
-        cache = Path(__file__).resolve().parent.parent / "assets" / "_cache"
+        # Fase 4: NO relativo al script — en un ejecutable empaquetado
+        # instalado en Program Files no hay permiso de escritura ahí.
+        cache = app_data_dir() / "cache"
         cache.mkdir(parents=True, exist_ok=True)
         ruta = cache / "chevron_down.png"
         qta.icon("fa5s.chevron-down", color=TEXT_MUTED).pixmap(QSize(14, 14)).save(str(ruta))

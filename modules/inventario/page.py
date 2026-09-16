@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.models import Producto, Usuario
+from core.paths import app_data_dir
 from modules.ajustes import repo as ajustes_repo
 from modules.inventario import repo
 from ui import styles
@@ -46,7 +47,11 @@ LINEAS_LABELS = [
     ("Suplementos", "suplemento"),
 ]
 
-ASSETS = Path(__file__).resolve().parents[2] / "assets" / "productos"
+# Fase 4: NO relativo al script — en un ejecutable empaquetado eso cae
+# dentro de la carpeta de instalación (p.ej. Program Files), sin permiso de
+# escritura, igual que el bug de la base que ya se resolvió en la Fase 0.
+# Las fotos de producto son datos del usuario, no del programa.
+ASSETS = app_data_dir() / "assets" / "productos"
 CARD_W = 220        # ancho fijo de tarjeta; las columnas fluyen según el ancho
 CARD_IMG_H = 120
 

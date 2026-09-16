@@ -4,11 +4,11 @@ from __future__ import annotations
 from core import database
 
 
-def test_base_nueva_llega_a_v6(db_temporal):
+def test_base_nueva_llega_a_v7(db_temporal):
     conn = database.get_connection()
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        assert version == 6, version
+        assert version == 7, version
 
         columnas_productos = {r[1] for r in conn.execute("PRAGMA table_info(productos)")}
         assert "linea_negocio" in columnas_productos
@@ -21,6 +21,9 @@ def test_base_nueva_llega_a_v6(db_temporal):
 
         columnas_solicitudes = {r[1] for r in conn.execute("PRAGMA table_info(solicitudes_reparacion)")}
         assert {"tipo_servicio_detalle", "sincronizado_en"} <= columnas_solicitudes
+
+        columnas_usuarios = {r[1] for r in conn.execute("PRAGMA table_info(usuarios)")}
+        assert {"email", "debe_cambiar_password"} <= columnas_usuarios
 
         tablas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert "categorias" in tablas
@@ -51,5 +54,5 @@ def test_init_db_dos_veces_no_falla(db_temporal):
         n_admins = conn.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0]
     finally:
         conn.close()
-    assert version == 6
+    assert version == 7
     assert n_admins == 1, "init_db() repetido no debe duplicar el admin"

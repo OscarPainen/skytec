@@ -10,8 +10,11 @@ dist/
 .env
 .DS_Store
 *.spec
+!skytec.spec
 ESTADO_PROYECTO.txt
 .pytest_cache/
+spike/
+spike_real/
 # Credencial de Firebase Admin SDK (Fase 3): nunca se commitea ni se
 # empaqueta. Vive en el directorio de datos del usuario (core/paths.py).
 serviceAccount.json
