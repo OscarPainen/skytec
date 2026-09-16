@@ -46,9 +46,27 @@ DANGER = "#DC2626"
 DANGER_SOFT = "rgba(220,38,38,0.08)"   # hover destructivo (8%)
 DANGER_SOFT2 = "rgba(220,38,38,0.16)"  # pressed destructivo
 
+# Paleta categórica de línea de negocio (Dashboard, Fase 2). Validada con el
+# validador de paletas del skill de dataviz sobre SURFACE (#F8FAFC): pasa
+# lightness/chroma/CVD/contraste (la aqua queda justo debajo de 3:1, por eso
+# nunca se usa sola — siempre con el nombre de la línea al lado en texto).
+# A propósito NO se usó el azul de esa paleta (casi idéntico a ACCENT) ni
+# verde/rojo (son OK/DANGER): una línea de negocio es identidad, no estado,
+# y reusar un color de estado para una serie categórica es la mezcla que hay
+# que evitar.
+LINEA_REPARACION = "#EB6834"   # naranja
+LINEA_TECNOLOGIA = "#1BAF7A"   # aqua
+LINEA_SUPLEMENTO = "#4A3AA7"   # violeta
+
 # ── Métrica (8px) ─────────────────────────────────────────────────────────
 S1, S2, S3, S4 = 8, 16, 24, 32
+# Escala de 4 completa (Dashboard, Fase 2.5): S0 para el gap más chico,
+# CARD_PADDING para el padding interno de tarjeta que no calzaba en S1-S4.
+S0 = 4
+CARD_PADDING = 20
 RADIUS = 8
+RADIUS_SM = 8    # elementos internos (chips, filas de leyenda)
+RADIUS_BAR = 3   # barras de gráfico
 FONT_FAMILY = "Inter, 'Segoe UI', system-ui, sans-serif"
 
 

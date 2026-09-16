@@ -33,7 +33,10 @@ def _icon(nombre: str):
 
 
 # (etiqueta, ícono, texto de la fase que lo implementa)
+# Dashboard primero a propósito: es la vista por defecto al iniciar sesión
+# (self.stack.setCurrentIndex(0) más abajo usa el orden de esta lista).
 MODULOS = [
+    ("Dashboard", "fa5s.chart-line", "Panel de las 3 líneas de negocio."),
     ("Servicio Técnico", "fa5s.tools", "Se implementa en la Fase 5."),
     ("Punto de Venta", "fa5s.cash-register", "Se implementa en la Fase 3."),
     ("Inventario", "fa5s.boxes", "Se implementa en la Fase 2."),
@@ -95,6 +98,10 @@ class MainWindow(QMainWindow):
 
     def _construir_pagina(self, etiqueta: str, nota: str) -> QWidget:
         """Página real si el módulo ya está implementado; si no, estado vacío."""
+        if etiqueta == "Dashboard":
+            from modules.dashboard.page import DashboardPage
+
+            return DashboardPage(self.usuario)
         if etiqueta == "Servicio Técnico":
             from modules.servicio_tecnico.page import ServicioTecnicoPage
 

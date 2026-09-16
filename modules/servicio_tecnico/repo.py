@@ -177,9 +177,13 @@ def completar(solicitud_id: int, usuario_id: int | None = None) -> int:
     # costo_unitario=0: el servicio técnico no tiene costo de repuestos
     # modelado todavía. TODO: cuando exista catálogo de tipos de servicio con
     # costo, reemplazar este 0 (backlog post-entrega, ver docs/plan-ejecucion.md).
+    # categoria="Reparaciones" (no "reparacion"): coincide con el nombre
+    # exacto que sembró la migración v4 en la tabla categorias, para que el
+    # desglose por categoría del Dashboard no muestre un valor huérfano que
+    # no está en la lista que gestiona Ajustes.
     venta_id = pos.registrar_venta(
         [{"descripcion": linea, "cantidad": 1, "precio_unitario": int(s["precio"]),
-          "categoria": "reparacion", "linea_negocio": "reparacion", "costo_unitario": 0}],
+          "categoria": "Reparaciones", "linea_negocio": "reparacion", "costo_unitario": 0}],
         pos_origen="Servicio Técnico", usuario_id=usuario_id, tipo="servicio_tecnico",
         origen="web" if s.get("origen") == "web" else "agenda",
     )

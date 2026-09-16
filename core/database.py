@@ -181,6 +181,38 @@ MIGRATIONS: list[str] = [
     ALTER TABLE ventas ADD COLUMN origen TEXT NOT NULL DEFAULT 'pos'
         CHECK (origen IN ('pos','web','agenda'));
     """,
+    # v5 — vista unificada para el Dashboard (Fase 2): une venta_items+ventas
+    # (+productos solo para el nombre de fallback) en una fila por ítem
+    # vendido, con dia/periodo ya derivados para filtrar sin parsear fechas
+    # en Python. No hace falta tocar servicios_tecnicos: aceptar/completar en
+    # servicio_tecnico/repo.py ya insertan en venta_items, así que todo el
+    # ingreso pasa por ahí (confirmado en la Fase 1.5, docs/flujo-venta.md).
+    """
+    CREATE VIEW v_operaciones AS
+    SELECT
+      vi.id                                   AS id_operacion,
+      v.fecha                                 AS fecha,
+      date(v.fecha)                           AS dia,
+      strftime('%Y-%m', v.fecha)              AS periodo,
+      vi.linea_negocio                        AS linea_negocio,
+      COALESCE(vi.categoria, 'Sin categoría') AS categoria,
+      v.origen                                AS origen,
+      v.pos_origen                            AS caja,
+      COALESCE(vi.descripcion, p.nombre, 'Sin descripción') AS descripcion,
+      vi.cantidad                             AS cantidad,
+      vi.subtotal                             AS monto,
+      vi.costo_unitario * vi.cantidad         AS costo,
+      vi.subtotal - (vi.costo_unitario * vi.cantidad) AS margen,
+      v.id                                    AS venta_id,
+      vi.producto_id                          AS producto_id
+    FROM venta_items vi
+    JOIN ventas v ON v.id = vi.venta_id
+    LEFT JOIN productos p ON p.id = vi.producto_id;
+
+    CREATE INDEX IF NOT EXISTS idx_ventas_fecha ON ventas(fecha);
+    CREATE INDEX IF NOT EXISTS idx_venta_items_venta ON venta_items(venta_id);
+    CREATE INDEX IF NOT EXISTS idx_venta_items_linea ON venta_items(linea_negocio);
+    """,
 ]
 
 
