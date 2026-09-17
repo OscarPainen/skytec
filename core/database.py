@@ -315,8 +315,9 @@ DEFAULT_CONFIG = {
     "pos_1_nombre": "Tech",       # pendiente confirmar con cliente
     "pos_2_nombre": "Fit",        # pendiente confirmar con cliente
     "stock_bajo_umbral": "5",
-    "impresora_conexion": "usb",   # usb | network | serial
+    "impresora_conexion": "windows",   # windows | usb | network | serial
     "impresora_ancho": "80",       # 58 | 80 (mm)
+    "impresora_windows_nombre": "",     # "" = predeterminada de Windows
     "impresora_host": "192.168.0.100",  # conexión de red
     "impresora_puerto": "9100",
     "impresora_serial": "COM1",         # conexión serial

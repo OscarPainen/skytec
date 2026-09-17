@@ -7,6 +7,7 @@ imprimir. Este módulo es Qt-free; el hilo de impresión vive en workers/printin
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from core.database import get_config
@@ -32,8 +33,23 @@ def _abrir_impresora():
             "Instálala para poder imprimir."
         )
 
-    conexion = (get_config("impresora_conexion", "usb") or "usb").lower()
+    # "windows" por defecto: la impresora ya instalada con su driver nativo
+    # de Windows, vía pywin32. Es la opción sin fricción para la máquina real
+    # del local -- evita depender de pyusb/libusb y de reemplazar el driver
+    # USB de la impresora por WinUSB (lo que exige "usb" en Windows). "usb"
+    # sigue disponible para desarrollo (esta Mac) o impresoras sin driver
+    # de Windows instalado.
+    conexion = (get_config("impresora_conexion", "windows") or "windows").lower()
     try:
+        if conexion == "windows":
+            if sys.platform != "win32":
+                raise PrintingError(
+                    "La conexión 'Windows' solo funciona en una máquina Windows "
+                    "(usa pywin32, que no existe en este sistema). Elige otra "
+                    "conexión en Ajustes para probar acá."
+                )
+            nombre = get_config("impresora_windows_nombre", "") or ""
+            return escpos_printer.Win32Raw(nombre)
         if conexion == "network":
             host = get_config("impresora_host", "192.168.0.100")
             puerto = int(get_config("impresora_puerto", "9100") or 9100)
@@ -50,6 +66,20 @@ def _abrir_impresora():
             "No se pudo conectar con la impresora. Revisa que esté encendida y "
             f"conectada, y la configuración en Ajustes.\n\nDetalle: {e}"
         )
+
+
+def impresoras_windows() -> list[str]:
+    """Nombres de las impresoras instaladas en Windows, tal como las ve el
+    propio sistema operativo (incluye la impresora térmica si ya se instaló
+    con su driver nativo). Lista vacía en cualquier otro SO o si falta
+    pywin32 -- nunca lanza, es solo para poblar un selector en Ajustes."""
+    if sys.platform != "win32":
+        return []
+    try:
+        from escpos.printer import Win32Raw
+        return sorted(Win32Raw().printers.keys())
+    except Exception:
+        return []
 
 
 def imprimir_texto(texto: str, logo_path: str | None = None) -> None:

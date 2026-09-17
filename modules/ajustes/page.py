@@ -122,9 +122,14 @@ class AjustesPage(QWidget):
         # ── Impresora ──────────────────────────────────────────────────────
         self._seccion("Impresora térmica")
         self.conexion = QComboBox()
-        for etiqueta, valor in [("USB", "usb"), ("Red", "network"), ("Serial", "serial")]:
+        for etiqueta, valor in [
+            ("Windows (recomendado)", "windows"),
+            ("USB", "usb"),
+            ("Red", "network"),
+            ("Serial", "serial"),
+        ]:
             self.conexion.addItem(etiqueta, valor)
-        self._set_combo(self.conexion, database.get_config("impresora_conexion", "usb"))
+        self._set_combo(self.conexion, database.get_config("impresora_conexion", "windows"))
         self.conexion.currentIndexChanged.connect(self._actualizar_campos_conexion)
         self.form.addLayout(self._fila("Conexión", self.conexion))
 
@@ -133,6 +138,33 @@ class AjustesPage(QWidget):
         self.ancho.addItem("80 mm", "80")
         self._set_combo(self.ancho, database.get_config("impresora_ancho", "80"))
         self.form.addLayout(self._fila("Ancho de papel", self.ancho))
+
+        self.win_impresora = QComboBox()
+        self.win_impresora.setEditable(True)
+        nombre_actual = database.get_config("impresora_windows_nombre", "")
+        disponibles = printing.impresoras_windows()
+        self.win_impresora.addItem("(predeterminada de Windows)", "")
+        for nombre in disponibles:
+            self.win_impresora.addItem(nombre, nombre)
+        if nombre_actual:
+            idx = self.win_impresora.findData(nombre_actual)
+            if idx >= 0:
+                self.win_impresora.setCurrentIndex(idx)
+            else:
+                self.win_impresora.setEditText(nombre_actual)
+        self.fila_win = self._fila("Impresora de Windows", self.win_impresora)
+        self.form.addLayout(self.fila_win)
+        if not disponibles:
+            pista = QLabel(
+                "No se detectan impresoras (normal fuera de Windows). "
+                "Dejar en blanco usa la predeterminada del sistema."
+            )
+            pista.setStyleSheet(f"color:{styles.TEXT_MUTED}; font-size:11px;")
+            pista.setWordWrap(True)
+            self.form.addWidget(pista)
+            self.pista_win = pista
+        else:
+            self.pista_win = None
 
         self.host = QLineEdit(database.get_config("impresora_host", "192.168.0.100"))
         self.puerto = QLineEdit(database.get_config("impresora_puerto", "9100"))
@@ -194,6 +226,16 @@ class AjustesPage(QWidget):
         if idx >= 0:
             combo.setCurrentIndex(idx)
 
+    def _valor_impresora_windows(self) -> str:
+        # Combo editable: si el texto actual coincide con un ítem de la lista
+        # (incluida la opción "predeterminada", cuyo data es ""), usamos su
+        # data; si es texto escrito a mano, currentIndex() da -1 y usamos ese
+        # texto tal cual.
+        idx = self.win_impresora.currentIndex()
+        if idx >= 0:
+            return self.win_impresora.itemData(idx) or ""
+        return self.win_impresora.currentText().strip()
+
     @staticmethod
     def _mostrar_fila(fila: QHBoxLayout, visible: bool) -> None:
         for i in range(fila.count()):
@@ -203,6 +245,9 @@ class AjustesPage(QWidget):
 
     def _actualizar_campos_conexion(self) -> None:
         tipo = self.conexion.currentData()
+        self._mostrar_fila(self.fila_win, tipo == "windows")
+        if self.pista_win is not None:
+            self.pista_win.setVisible(tipo == "windows")
         self._mostrar_fila(self.fila_host, tipo == "network")
         self._mostrar_fila(self.fila_puerto, tipo == "network")
         self._mostrar_fila(self.fila_serial, tipo == "serial")
@@ -280,6 +325,7 @@ class AjustesPage(QWidget):
             "stock_bajo_umbral": str(self.umbral.value()),
             "impresora_conexion": self.conexion.currentData(),
             "impresora_ancho": self.ancho.currentData(),
+            "impresora_windows_nombre": self._valor_impresora_windows(),
             "impresora_host": self.host.text().strip(),
             "impresora_puerto": self.puerto.text().strip() or "9100",
             "impresora_serial": self.serial.text().strip() or "COM1",
@@ -313,6 +359,7 @@ class AjustesPage(QWidget):
         # Guarda sin el mensaje, para que la prueba use los valores actuales.
         database.set_config("impresora_conexion", self.conexion.currentData())
         database.set_config("impresora_ancho", self.ancho.currentData())
+        database.set_config("impresora_windows_nombre", self._valor_impresora_windows())
         database.set_config("impresora_host", self.host.text().strip())
         database.set_config("impresora_puerto", self.puerto.text().strip() or "9100")
         database.set_config("impresora_serial", self.serial.text().strip() or "COM1")

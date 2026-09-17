@@ -165,6 +165,61 @@ en el local, pero se ve una ventana de consola negra al abrir la app.
 Queda anotado en el propio `.spec` para que Oscar decida cuándo prefiera
 la versión "prolija" sin consola.
 
+---
+
+# Fase 4 — Cambio de conexión por defecto de la impresora: "Windows" en vez de "USB"
+
+2026-09-17 · Motivado por una prueba real en la Mac de desarrollo: al
+probar la impresión, `core/printing.py` devolvió "backend no disponible"
+(`usb.core.NoBackendError`, mensaje de pyusb). La causa no era un bug de
+Skytec — a esta Mac le faltaba la librería nativa `libusb` (Homebrew:
+`brew install libusb`; el paquete Python `pyusb` es solo el wrapper). Una
+vez instalada, imprimir por USB funcionó contra una impresora real
+conectada.
+
+Pero esto expuso el problema real para la máquina Windows del local:
+**pyusb necesita, además de `libusb-1.0.dll`, que el driver de la
+impresora esté reemplazado por WinUSB o libusbK** (típicamente con una
+herramienta como Zadig) — Windows ata las impresoras USB a su propio
+driver (`usbprint`) por defecto, y libusb no puede tomar un dispositivo
+que ya tiene otro driver de kernel encima. Es un paso manual, por máquina,
+que no se puede automatizar desde la app ni el instalador.
+
+**Cambio: la conexión por defecto ahora es "Windows"**, no "USB". Usa
+`escpos.printer.Win32Raw` (vía `pywin32`), que manda los bytes ESC/POS a
+través del driver que Windows ya instaló para la impresora — el mismo que
+usa cualquier programa que "imprime" normalmente. Sin Zadig, sin
+reemplazar drivers, sin `libusb-1.0.dll`. Es el camino de menor fricción
+para "llegar e importar" en la máquina real.
+
+Cambios:
+- `requirements.txt`: `pywin32>=306; sys_platform == "win32"` (marcador de
+  entorno — no intenta instalarse en macOS/Linux, donde fallaría).
+- `core/database.py` (`DEFAULT_CONFIG`): `impresora_conexion` default pasa
+  de `"usb"` a `"windows"`; nueva clave `impresora_windows_nombre` (vacía =
+  usa la impresora predeterminada del sistema).
+- `core/printing.py`: nueva rama `conexion == "windows"` en
+  `_abrir_impresora()`, y `impresoras_windows()` para listar las
+  impresoras instaladas (usado por Ajustes; devuelve `[]` fuera de
+  Windows, nunca lanza).
+- `modules/ajustes/page.py`: nueva opción "Windows (recomendado)" primera
+  en el combo de Conexión, con un selector (editable) de la impresora de
+  Windows a usar.
+- "USB" sigue disponible como opción en Ajustes, para impresoras sin
+  driver de Windows instalado, o para seguir probando en esta Mac de
+  desarrollo (donde "Windows" no puede funcionar: no existe `pywin32` en
+  macOS, y aunque existiera, `win32print` es una API exclusiva de Windows).
+
+**No probado contra Windows real todavía** (no hay máquina Windows desde
+acá) — el riesgo que queda es si el driver que Windows instala solo para
+verla en "Dispositivos e impresoras" acepta bytes ESC/POS crudos vía
+`Win32Raw`/`win32print.WritePrinter` sin transformarlos. Para la inmensa
+mayoría de impresoras térmicas de recibos (que se instalan con un driver
+"genérico / de texto" o el propio del fabricante en modo RAW) esto
+funciona de fábrica; impresoras que solo traen driver GDI (pensado para
+imprimir páginas, no texto crudo) son la excepción y necesitarían volver a
+la opción "USB" con el reemplazo de driver de más arriba.
+
 ## ⚠️ Sigue pendiente Windows (no cambia respecto de la sección de arriba)
 
 Todo lo de esta sección también corrió en macOS (arm64). El build real
